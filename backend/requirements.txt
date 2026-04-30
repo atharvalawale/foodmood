@@ -1,0 +1,34 @@
+# ── Web Framework (NEW) ───────────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+pydantic==2.7.1
+
+# ── Environment (NEW) ─────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── AI — Gemini (NEW) ─────────────────────────────────────────────────────────
+google-generativeai==0.5.4
+
+# ── HTTP requests (NEW) ───────────────────────────────────────────────────────
+requests==2.31.0
+httpx==0.27.0
+
+# ── Payments (NEW) ────────────────────────────────────────────────────────────
+stripe==9.9.0
+
+# ── Database — Supabase (NEW) ─────────────────────────────────────────────────
+supabase==2.4.6
+
+# ── Data (NEW) ────────────────────────────────────────────────────────────────
+pandas==2.2.2
+
+# ── OLD packages (kept from your original requirements.txt) ───────────────────
+streamlit
+torch
+torchvision
+pillow
+opencv-python-headless
+numpy
+SpeechRecognition
+ffmpeg-python

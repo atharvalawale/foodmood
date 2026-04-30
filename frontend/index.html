@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="FoodMood — AI-Powered Nutrition Assistant. Track meals, scan food, order from healthy restaurants." />
+    <meta name="theme-color" content="#FFD700" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍱</text></svg>" />
+
+    <!-- Fonts — same as all pages -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Clash+Display:wght@400;500;600;700&family=Satoshi:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>FoodMood — AI Nutrition Assistant</title>
+
+    <style>
+      /* ── Reset ── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      /* ── Base ── */
+      html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+      body {
+        font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #ffffff;
+        color: #1A1A1A;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* ── Root div that React mounts into ── */
+      #root {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Loading splash (shown before React loads) ── */
+      #splash {
+        position: fixed;
+        inset: 0;
+        background: #FFD700;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.4s ease;
+      }
+      #splash.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash-logo {
+        font-size: 64px;
+        margin-bottom: 16px;
+        animation: splashBounce 1s ease-in-out infinite;
+      }
+      #splash-name {
+        font-family: 'Clash Display', sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        color: #1A1A1A;
+        margin-bottom: 8px;
+      }
+      #splash-sub {
+        font-size: 14px;
+        color: rgba(0,0,0,0.5);
+      }
+      #splash-dots {
+        display: flex;
+        gap: 6px;
+        margin-top: 32px;
+      }
+      #splash-dots span {
+        width: 8px; height: 8px;
+        background: #1A1A1A;
+        border-radius: 50%;
+        animation: splashDot 1.2s ease-in-out infinite;
+      }
+      #splash-dots span:nth-child(2) { animation-delay: 0.2s; }
+      #splash-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+      @keyframes splashBounce {
+        0%, 100% { transform: translateY(0);    }
+        50%       { transform: translateY(-12px); }
+      }
+      @keyframes splashDot {
+        0%, 100% { opacity: 0.3; transform: scale(0.8); }
+        50%       { opacity: 1;   transform: scale(1.2); }
+      }
+
+      /* ── Scrollbar ── */
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #EEEEEE; border-radius: 99px; }
+
+      /* ── Selection ── */
+      ::selection { background: #FFD700; color: #1A1A1A; }
+    </style>
+  </head>
+
+  <body>
+    <!-- Loading splash — hidden once React mounts -->
+    <div id="splash">
+      <div id="splash-logo">🍱</div>
+      <div id="splash-name">FoodMood</div>
+      <div id="splash-sub">AI Nutrition Assistant</div>
+      <div id="splash-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- React mounts here -->
+    <div id="root"></div>
+
+    <!-- Hide splash once React loads -->
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const splash = document.getElementById('splash');
+          if (splash) {
+            splash.classList.add('hidden');
+            setTimeout(() => splash.remove(), 400);
+          }
+        }, 800);
+      });
+    </script>
+
+    <!-- Vite entry point -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
