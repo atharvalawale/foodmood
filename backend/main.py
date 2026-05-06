@@ -14,8 +14,8 @@ load_dotenv()
 # ── Import all modules ─────────────────────────────────────────────────────────
 from modules.image_detector     import predict_food
 from modules.portion            import estimate_portion
-from modules.calorie_calculator import calculate_meal_totals
-from modules.nutrition          import load_nutrition_data
+from modules.calorie_calculator import calculate_meal_totals, VERIFIED_PORTIONS, FALLBACK_NUTRITION
+from modules.nutrition          import load_nutrition_data, NUTRITION_DB, get_food_nutrition
 from modules.text_parser        import extract_food_items
 from modules.health_score       import compute_meal_health_score
 from modules.personalization    import apply_personalization
@@ -33,7 +33,7 @@ from modules.tracking           import (
 )
 
 # ── Supabase auth + database ───────────────────────────────────────────────────
-from modules.auth import register_user, login_user, get_current_user
+from modules.auth import register_user, login_user, get_current_user, refresh_user_token
 from modules.db   import (
     save_profile_db, get_profile_db,
     add_meal_db, get_meals_today_db, delete_meal_db,
@@ -61,6 +61,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UNIT → GRAM CONVERSION
+# When user picks "1 cup" or "2 tbsp", this converts to grams
+# Used in the new /foods/calculate endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+UNIT_TO_GRAMS = {
+    "serving":  None,    # use VERIFIED_PORTIONS (food-specific)
+    "piece":    None,    # use VERIFIED_PORTIONS (food-specific)
+    "g":        1.0,     # 1g = 1g (direct)
+    "ml":       1.0,     # treat ml same as g for nutrition
+    "cup":      240.0,   # 1 cup = 240ml
+    "bowl":     250.0,   # 1 bowl = 250g
+    "tbsp":     15.0,    # 1 tablespoon = 15g
+    "tsp":      5.0,     # 1 teaspoon = 5g
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPER — get user_id from token
@@ -107,7 +124,8 @@ class LogEntry(BaseModel):
     food_name: str
     quantity:  float
     unit:      str   = "g"
-    meal_time: str   = "lunch"
+    meal_type: str   = "lunch"   # breakfast / lunch / dinner / snack
+    meal_time: str   = "lunch"   # kept for backwards compatibility
     calories:  float = 0
     protein:   float = 0
     carbs:     float = 0
@@ -149,6 +167,46 @@ class LoginInput(BaseModel):
     email:    str
     password: str
 
+class RefreshInput(BaseModel):
+    refresh_token: str
+
+class FoodCalculateInput(BaseModel):
+    food_key: str
+    quantity: float = 1.0
+    unit:     str   = "serving"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPER — food category label
+# Used in /foods/search results to show subtitle like "Indian Bread"
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_food_category(food_key: str) -> str:
+    """Returns a human-readable category name for a food key."""
+    categories = {
+        "rice|biryani|pulao|khichdi|poha":              "Rice & Grains",
+        "chapati|roti|naan|paratha|puri|bread|pav":     "Indian Bread",
+        "dal|rajma|chhole|sambar|moong":                "Dal & Legumes",
+        "egg":                                           "Eggs",
+        "chicken|mutton|fish":                           "Meat & Fish",
+        "paneer|tofu":                                   "Protein",
+        "milk|curd|lassi|raita|cheese|butter|ghee":     "Dairy",
+        "idli|dosa|upma|uttapam":                        "South Indian",
+        "samosa|pakora|vada|dhokla|chips":              "Snacks",
+        "banana|apple|mango|orange|grapes|watermelon":  "Fruits",
+        "almonds|peanuts|cashews|walnuts":              "Nuts",
+        "chai|coffee|juice":                             "Drinks",
+        "burger|pizza|maggi|sandwich":                  "Fast Food",
+        "gulab|rasgulla|kheer|ladoo|halwa|chocolate":   "Sweets",
+        "oats|cornflakes":                               "Breakfast",
+        "salad|cucumber|tomato|spinach|broccoli":       "Vegetables",
+    }
+    for pattern, category in categories.items():
+        for keyword in pattern.split("|"):
+            if keyword in food_key:
+                return category
+    return "Food"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ROOT
@@ -175,8 +233,21 @@ def register(data: RegisterInput):
 
 @app.post("/auth/login")
 def login(data: LoginInput):
-    """Logs in and returns access_token. Frontend saves this."""
+    """
+    Logs in and returns access_token + refresh_token.
+    Frontend saves both — access_token for requests, refresh_token to auto-renew.
+    """
     return login_user(email=data.email, password=data.password)
+
+
+@app.post("/auth/refresh")
+def refresh_token(data: RefreshInput):
+    """
+    Called by client.js when access_token expires (401 error).
+    Returns a new access_token without making user log in again.
+    Supabase tokens expire every 1 hour — this keeps the session alive silently.
+    """
+    return refresh_user_token(data.refresh_token)
 
 
 @app.get("/auth/me")
@@ -186,6 +257,188 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="Please login first.")
     user = get_current_user(credentials.credentials)
     return {"user_id": user.id, "email": user.email}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FOOD SEARCH  ← NEW (powers HealthifyMe-style search in Scanner)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/foods/search")
+def search_foods(q: str):
+    """
+    Searches the nutrition database for foods matching the query.
+
+    Example: GET /foods/search?q=chap
+    Returns: chapati, chicken_tikka, etc. with calories per serving
+
+    How it works:
+    1. Normalize query ("Pav Bhaji" → "pav bhaji")
+    2. Scan all foods in NUTRITION_DB for matches
+    3. Also search USDA if local results < 5
+    4. Return top 20 matches sorted by relevance
+    """
+    query = q.strip().lower()
+
+    if len(query) < 2:
+        return {"results": []}
+
+    results = []
+
+    # Search through the entire loaded nutrition DB
+    for food_key, nutrition in NUTRITION_DB.items():
+        # "egg_boiled" → "egg boiled" so "egg" matches both
+        food_display = food_key.replace("_", " ")
+
+        if query in food_display or query in food_key:
+            # Per-serving calories using verified portion size
+            # e.g. chapati = 35g per serving → 297 kcal/100g × 0.35 = 104 kcal
+            serving_grams   = VERIFIED_PORTIONS.get(food_key, 100)
+            cal_per_serving = round(nutrition["calories_100g"] * serving_grams / 100)
+
+            results.append({
+                "key":                  food_key,
+                "name":                 food_display.title(),   # "egg boiled" → "Egg Boiled"
+                "calories_per_serving": cal_per_serving,
+                "calories_per_100g":    nutrition["calories_100g"],
+                "protein_per_100g":     nutrition.get("protein", 0),
+                "carbs_per_100g":       nutrition.get("carbs",   0),
+                "fat_per_100g":         nutrition.get("fat",     0),
+                "category":             _get_food_category(food_key),
+            })
+
+    # If fewer than 5 local results, also try USDA API
+    # This catches foods not in our Indian DB (e.g. exotic items)
+    if len(results) < 5:
+        try:
+            from modules.usda import get_usda_nutrition
+            usda_result = get_usda_nutrition(query)
+            if usda_result:
+                usda_key = query.replace(" ", "_")
+                # Only add if not already found locally
+                if not any(r["key"] == usda_key for r in results):
+                    results.append({
+                        "key":                  usda_key,
+                        "name":                 query.title(),
+                        "calories_per_serving": usda_result["calories_100g"],
+                        "calories_per_100g":    usda_result["calories_100g"],
+                        "protein_per_100g":     usda_result.get("protein", 0),
+                        "carbs_per_100g":       usda_result.get("carbs",   0),
+                        "fat_per_100g":         usda_result.get("fat",     0),
+                        "category":             "USDA",
+                    })
+        except Exception as e:
+            print(f"⚠️  USDA search failed: {e}")
+
+    # Sort by relevance:
+    # 1st — exact match (user typed "chapati", food_key = "chapati")
+    # 2nd — starts with query ("chap" → "chapati")
+    # 3rd — everything else (contains query somewhere)
+    query_key = query.replace(" ", "_")
+    results.sort(key=lambda x: (
+        0 if x["key"] == query_key else
+        1 if x["key"].startswith(query_key) else
+        2
+    ))
+
+    # Return top 20 — don't overwhelm the user
+    return {"results": results[:20]}
+
+
+@app.post("/foods/calculate")
+def calculate_food_nutrition(data: FoodCalculateInput):
+    """
+    Calculates exact nutrition for a food + quantity + unit.
+    Called every time user changes the quantity slider in Scanner.
+
+    Example input:
+      { "food_key": "chapati", "quantity": 2, "unit": "serving" }
+
+    Example output:
+      { "calories": 208, "protein": 6.3, "carbs": 20.8, "fat": 2.1, ... }
+
+    How grams are calculated:
+    - unit = "serving" or "piece" → use VERIFIED_PORTIONS (e.g. chapati = 35g)
+    - unit = "g" or "ml"          → quantity IS the grams directly
+    - unit = "cup"                 → 240g × quantity
+    - unit = "bowl"                → 250g × quantity
+    - unit = "tbsp"                → 15g × quantity
+    - unit = "tsp"                 → 5g × quantity
+    """
+    food_key = data.food_key.lower().strip().replace(" ", "_")
+    quantity = float(data.quantity) if data.quantity > 0 else 1.0
+    unit     = data.unit.lower().strip()
+
+    print(f"🔍 calculate: food_key='{food_key}' quantity={quantity} unit='{unit}'")
+
+    # Step 1: Get nutrition per 100g
+    # Check FALLBACK_NUTRITION first (verified values for chai, khari etc.)
+    nutrition = FALLBACK_NUTRITION.get(food_key) or get_food_nutrition(food_key)
+
+    if not nutrition:
+        # Try USDA as last resort
+        try:
+            from modules.usda import get_usda_nutrition
+            nutrition = get_usda_nutrition(food_key.replace("_", " "))
+        except:
+            pass
+
+    if not nutrition:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Food '{food_key}' not found. Try searching for a different name."
+        )
+
+    # Step 2: Convert unit to grams
+    if unit in ("serving", "piece"):
+        # Try exact key first, then try common aliases
+        # This fixes the bug where "egg_boiled" might come in as "egg boiled" etc.
+        grams_per_unit = VERIFIED_PORTIONS.get(food_key, None)
+
+        # If not found directly, try stripping suffix variants
+        # e.g. "egg_boiled" not found → try "egg"
+        if grams_per_unit is None:
+            # Try all keys that START with the food_key base
+            base = food_key.split("_")[0]  # "egg_boiled" → "egg"
+            for k, v in VERIFIED_PORTIONS.items():
+                if k == food_key or k.startswith(base + "_") or k == base:
+                    grams_per_unit = v
+                    print(f"✅ Matched VERIFIED_PORTIONS: '{food_key}' → '{k}' = {v}g")
+                    break
+
+        # Final fallback — use 100g but warn
+        if grams_per_unit is None:
+            print(f"⚠️  '{food_key}' not in VERIFIED_PORTIONS — using 100g fallback")
+            grams_per_unit = 100
+
+    elif unit in ("g", "ml"):
+        # Direct: quantity IS the grams
+        # e.g. quantity=150, unit="g" → 150g exactly
+        grams_per_unit = 1.0
+    else:
+        # Cup, bowl, tbsp, tsp — use fixed conversion
+        grams_per_unit = UNIT_TO_GRAMS.get(unit, 100)
+
+    # Total grams = grams per unit × how many units
+    # e.g. 2 servings of chapati = 35 × 2 = 70g
+    total_grams = grams_per_unit * quantity
+
+    # factor = how many "100g portions" we have
+    # e.g. 70g → factor = 0.7 → multiply all nutrition by 0.7
+    factor = total_grams / 100
+
+    return {
+        "food_key": food_key,
+        "grams":    round(total_grams, 1),
+        "quantity": quantity,
+        "unit":     unit,
+        "calories": round(nutrition["calories_100g"]  * factor, 1),
+        "protein":  round(nutrition.get("protein", 0) * factor, 1),
+        "carbs":    round(nutrition.get("carbs",   0) * factor, 1),
+        "fat":      round(nutrition.get("fat",     0) * factor, 1),
+        "fiber":    round(nutrition.get("fiber",   0) * factor, 1),
+        "sugar":    round(nutrition.get("sugar",   0) * factor, 1),
+        "sodium":   round(nutrition.get("sodium",  0) * factor, 1),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -410,10 +663,14 @@ def add_log(
 ):
     """
     Saves meal to Supabase (real users) or memory (demo users).
+    Accepts meal_type (new) or meal_time (old) — both work.
     """
     global demo_log, demo_streak
 
     meal = entry.dict()
+    # Support both meal_type (new Scanner) and meal_time (old Scanner)
+    # Always store as meal_type in DB
+    meal["meal_type"] = entry.meal_type or entry.meal_time or "lunch"
     meal["logged_at"] = datetime.now().isoformat()
     meal["date"]      = str(date.today())
 
@@ -438,21 +695,18 @@ def get_daily_log(user_id: Optional[str] = Depends(get_user_id)):
     Demo user → reads from memory
     """
     if user_id:
-        # ── Real user ────────────────────────────────────────────────────────
         todays_meals = get_meals_today_db(user_id)
         streak       = get_streak_db(user_id)
         profile      = get_profile_db(user_id)
         goal         = profile.get("goal", "maintenance")
         print(f"📊 Loaded {len(todays_meals)} meals from Supabase")
     else:
-        # ── Demo user ────────────────────────────────────────────────────────
         today        = str(date.today())
         todays_meals = [m for m in demo_log if m.get("date") == today]
         streak       = demo_streak
         goal         = demo_profile.get("goal", "maintenance")
         print(f"📊 Loaded {len(todays_meals)} meals from memory (demo)")
 
-    # Calculate totals
     totals = calculate_daily_totals(todays_meals) if todays_meals else {
         "calories": 0, "protein": 0, "carbs": 0,
         "fat": 0, "fiber": 0, "sugar": 0, "sodium": 0,
@@ -473,7 +727,6 @@ def get_daily_log(user_id: Optional[str] = Depends(get_user_id)):
         })
         health_score = round(score, 1)
 
-    # Weekly summary for real users
     weekly = None
     if user_id:
         week_meals = get_meals_week_db(user_id)
@@ -596,6 +849,7 @@ def place_order(
 
     meal_entry = get_cart_meal_dict(cart)
     meal_entry["food_name"] = f"Order from {data.restaurant_name}"
+    meal_entry["meal_type"] = "order"
     meal_entry["meal_time"] = "order"
     meal_entry["date"]      = str(date.today())
     meal_entry["logged_at"] = datetime.now().isoformat()
