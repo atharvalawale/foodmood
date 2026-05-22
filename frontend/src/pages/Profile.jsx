@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 
-// ─── Same tokens as Dashboard ─────────────────────────────────────────────────
 const D = {
   yellow:"#FFD60A", yellowDim:"rgba(255,214,10,0.12)", yellowText:"#B8960A",
   bg:"#0F0F0F", s1:"#181818", s2:"#222222", s3:"#2A2A2A",
@@ -15,7 +14,6 @@ const D = {
   t1:"#F0F0F0", t2:"#888888", t3:"#444444",
 };
 
-// ─── Formulas ─────────────────────────────────────────────────────────────────
 function calculate_bmi(weight_kg, height_cm) {
   if (!height_cm) return { bmi:0, category:"Unknown", color:D.t2 };
   const h = height_cm / 100;
@@ -52,7 +50,6 @@ const GOAL_OPTIONS = [
   { val:"muscle_gain", label:"Muscle",   emoji:"💪", desc:"TDEE + 300" },
 ];
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
 function SectionLabel({ children, top=true }) {
   return (
     <div style={{ fontSize:9, color:D.t2, letterSpacing:1.5, textTransform:"uppercase", marginBottom:10, marginTop:top?20:0, fontFamily:"'DM Mono',monospace", fontWeight:600 }}>
@@ -81,24 +78,48 @@ const inputStyle = (editing) => ({
   opacity: editing ? 1 : 0.7,
 });
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Profile() {
   const navigate = useNavigate();
-  const [saved,   setSaved]   = useState(false);
-  const [editing, setEditing] = useState(false);
-
-  const load = () => JSON.parse(localStorage.getItem("foodmood_user")||"{}");
+  const [saved,     setSaved]     = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [editing,   setEditing]   = useState(false);
+  const [loading,   setLoading]   = useState(true);
 
   const [form, setForm] = useState({
     name:"", gender:"Male", age:25,
     weight_kg:70, height_cm:170,
     activity_level:"Moderately Active (exercise 3-5 days)",
     goal:"maintenance", diet_type:"No restriction", allergies:"",
-    ...load(),
   });
 
-  useEffect(() => { setForm(f=>({...f,...load()})); }, []);
-  const set = (key, val) => setForm(f=>({...f,[key]:val}));
+  // Safety net — never stuck on loading longer than 3s
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Load profile — localStorage first (instant), then Supabase
+  useEffect(() => {
+    async function loadProfile() {
+      const local = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
+      if (Object.keys(local).length > 0) setForm(f => ({ ...f, ...local }));
+      try {
+        const res = await api.get("/profile");
+        if (res.data && Object.keys(res.data).length > 0) {
+          setForm(f => ({ ...f, ...res.data }));
+          const cur = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
+          localStorage.setItem("foodmood_user", JSON.stringify({ ...cur, ...res.data }));
+        }
+      } catch(e) {
+        console.warn("Profile API failed:", e?.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadProfile();
+  }, []);
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const { bmi, category:bmiCat, color:bmiColor } = calculate_bmi(form.weight_kg, form.height_cm);
   const tdee    = calculate_tdee(form.weight_kg, form.height_cm, form.age, form.gender, form.activity_level);
@@ -106,15 +127,54 @@ export default function Profile() {
   const protein = form.goal==="muscle_gain"?180:form.goal==="weight_loss"?120:100;
   const carbs   = form.goal==="weight_loss"?150:250;
   const fat     = form.goal==="weight_loss"?50:65;
-  const allergyList = form.allergies ? form.allergies.split(",").map(a=>a.trim().toLowerCase()).filter(Boolean) : [];
+  const allergyList = Array.isArray(form.allergies)
+    ? form.allergies.filter(Boolean)
+    : (form.allergies || "").split(",").map(a=>a.trim().toLowerCase()).filter(Boolean);
 
   async function saveProfile() {
-    const profile = { ...form, bmi, tdee, calGoal, allergies_list:allergyList };
-    localStorage.setItem("foodmood_user", JSON.stringify(profile));
-    try { await api.post("/profile", profile); } catch {}
-    setSaved(true); setEditing(false);
-    setTimeout(()=>setSaved(false), 3000);
+    setSaveError("");
+
+    // Build profile with exact field names backend expects
+    const profile = {
+      name:           form.name,
+      gender:         form.gender,
+      age:            Number(form.age),
+      weight_kg:      Number(form.weight_kg),
+      height_cm:      Number(form.height_cm),
+      activity_level: form.activity_level,
+      goal:           form.goal,
+      diet_type:      form.diet_type,
+      allergies:      form.allergies,  // plain string
+      calGoal:        calGoal,
+      tdee:           tdee,
+      bmi:            bmi,
+    };
+
+    // Save to localStorage — preserve existing token so auth still works
+    const existing = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
+    localStorage.setItem("foodmood_user", JSON.stringify({ ...existing, ...profile }));
+
+    try {
+      await api.post("/profile", profile);
+      setSaved(true);
+      setEditing(false);
+      setTimeout(() => setSaved(false), 3000);
+    } catch(e) {
+      const msg = e?.response?.data?.detail || e?.response?.data?.error || e?.message || "Unknown error";
+      console.error("Profile save failed:", msg);
+      setSaveError(`API error: ${msg}`);
+      // Still close editing — saved locally at least
+      setSaved(true);
+      setEditing(false);
+      setTimeout(() => { setSaved(false); setSaveError(""); }, 5000);
+    }
   }
+
+  if (loading) return (
+    <div style={{ background:D.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", color:D.t2, fontSize:13 }}>
+      Loading profile…
+    </div>
+  );
 
   return (
     <>
@@ -134,7 +194,7 @@ export default function Profile() {
 
       <div className="profile">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div style={{ background:D.s1, borderBottom:`1px solid ${D.border}`, padding:"48px 14px 14px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
             <button onClick={() => navigate("/dashboard")} style={{
@@ -143,7 +203,7 @@ export default function Profile() {
               cursor:"pointer", fontSize:14, color:D.t1, flexShrink:0,
             }}>←</button>
             <div style={{ fontSize:16, fontWeight:700, color:D.t1, flex:1, letterSpacing:"-0.3px" }}>My Profile 👤</div>
-            <button onClick={() => setEditing(e=>!e)} style={{
+            <button onClick={() => { setEditing(e=>!e); setSaveError(""); }} style={{
               background: editing ? D.s2 : D.yellow,
               color: editing ? D.t1 : D.bg,
               border: editing ? `1px solid ${D.border2}` : "none",
@@ -154,8 +214,6 @@ export default function Profile() {
               {editing ? "Cancel" : "✏️ Edit"}
             </button>
           </div>
-
-          {/* Avatar + name */}
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <div style={{
               width:48, height:48, borderRadius:13,
@@ -174,37 +232,33 @@ export default function Profile() {
 
         <div style={{ padding:"0 14px" }}>
 
-          {/* ── Stats ── */}
+          {/* Stats */}
           <SectionLabel>📊 Auto-Calculated Stats</SectionLabel>
           <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-            <StatCard label="BMI"      value={bmi}          sub={bmiCat}                          color={bmiColor} />
-            <StatCard label="TDEE"     value={`${tdee}`}    sub="kcal/day"                        color={D.amber}  />
-            <StatCard label="Cal Goal" value={`${calGoal}`} sub={form.goal.replace("_"," ")}      color={D.blue}   />
+            <StatCard label="BMI"      value={bmi}          sub={bmiCat}                     color={bmiColor} />
+            <StatCard label="TDEE"     value={`${tdee}`}    sub="kcal/day"                   color={D.amber}  />
+            <StatCard label="Cal Goal" value={`${calGoal}`} sub={form.goal.replace("_"," ")} color={D.blue}   />
           </div>
           <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-            <StatCard label="Protein"  value={`${protein}g`} sub="daily target" color={D.blue}  />
-            <StatCard label="Carbs"    value={`${carbs}g`}   sub="daily target" color={D.green} />
-            <StatCard label="Fat"      value={`${fat}g`}     sub="daily target" color={D.coral} />
+            <StatCard label="Protein" value={`${protein}g`} sub="daily target" color={D.blue}  />
+            <StatCard label="Carbs"   value={`${carbs}g`}   sub="daily target" color={D.green} />
+            <StatCard label="Fat"     value={`${fat}g`}     sub="daily target" color={D.coral} />
           </div>
-
-          {/* Goal note */}
           <div style={{ background:D.yellowDim, border:`1px solid ${D.yellow}22`, borderRadius:10, padding:"9px 12px", fontSize:11, color:D.t1, marginBottom:4 }}>
             <span style={{ color:D.yellow, fontWeight:700 }}>🎯 Target: {calGoal} kcal/day</span>
             {form.goal==="weight_loss" && <span style={{ color:D.t2 }}> · TDEE − 500 → lose ~0.5kg/week</span>}
             {form.goal==="muscle_gain" && <span style={{ color:D.t2 }}> · TDEE + 300 → gain muscle</span>}
-            {form.goal==="maintenance"&& <span style={{ color:D.t2 }}> · eating at TDEE</span>}
+            {form.goal==="maintenance" && <span style={{ color:D.t2 }}> · eating at TDEE</span>}
           </div>
 
-          {/* ── Personal Info ── */}
+          {/* Personal Info */}
           <SectionLabel>👤 Personal Info</SectionLabel>
-
           <div style={{ marginBottom:10 }}>
             <div style={{ fontSize:10, color:D.t2, marginBottom:5, fontWeight:600, textTransform:"uppercase", letterSpacing:.4 }}>Your Name</div>
             <input type="text" value={form.name} disabled={!editing}
               onChange={e=>set("name",e.target.value)} placeholder="Enter your name"
               style={inputStyle(editing)} />
           </div>
-
           <div style={{ marginBottom:10 }}>
             <div style={{ fontSize:10, color:D.t2, marginBottom:5, fontWeight:600, textTransform:"uppercase", letterSpacing:.4 }}>Gender</div>
             <div style={{ display:"flex", gap:8 }}>
@@ -223,7 +277,6 @@ export default function Profile() {
               ))}
             </div>
           </div>
-
           <div style={{ marginBottom:10 }}>
             <div style={{ fontSize:10, color:D.t2, marginBottom:5, fontWeight:600, textTransform:"uppercase", letterSpacing:.4 }}>Age: {form.age} years</div>
             <input type="range" min="10" max="100" value={form.age}
@@ -233,7 +286,7 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* ── Body Measurements ── */}
+          {/* Body Measurements */}
           <SectionLabel>⚖️ Body Measurements</SectionLabel>
           <div style={{ display:"flex", gap:8, marginBottom:10 }}>
             {[
@@ -268,7 +321,7 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* ── Activity Level ── */}
+          {/* Activity Level */}
           <SectionLabel>🏃 Activity Level</SectionLabel>
           <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:4 }}>
             {ACTIVITY_OPTIONS.map(opt=>(
@@ -291,7 +344,7 @@ export default function Profile() {
             ))}
           </div>
 
-          {/* ── Fitness Goal ── */}
+          {/* Fitness Goal */}
           <SectionLabel>🎯 Fitness Goal</SectionLabel>
           <div style={{ display:"flex", gap:8, marginBottom:4 }}>
             {GOAL_OPTIONS.map(g=>(
@@ -310,7 +363,7 @@ export default function Profile() {
             ))}
           </div>
 
-          {/* ── Diet Type ── */}
+          {/* Diet Type */}
           <SectionLabel>🥗 Diet Type</SectionLabel>
           <div style={{ marginBottom:10 }}>
             <select value={form.diet_type} disabled={!editing}
@@ -320,7 +373,7 @@ export default function Profile() {
             </select>
           </div>
 
-          {/* ── Allergies ── */}
+          {/* Allergies */}
           <SectionLabel>⚠️ Allergies</SectionLabel>
           <div style={{ marginBottom:10 }}>
             <div style={{ fontSize:10, color:D.t2, marginBottom:5 }}>Comma-separated (e.g. nuts, dairy, gluten)</div>
@@ -341,7 +394,7 @@ export default function Profile() {
             </div>
           )}
 
-          {/* ── Profile Summary ── */}
+          {/* Profile Summary */}
           <SectionLabel>📋 Profile Summary</SectionLabel>
           <div className="card" style={{ padding:"12px 14px", marginBottom:14 }}>
             {[
@@ -360,7 +413,7 @@ export default function Profile() {
             ))}
           </div>
 
-          {/* ── Save ── */}
+          {/* Save button */}
           {editing && (
             <button onClick={saveProfile} style={{
               width:"100%", padding:"13px 0",
@@ -368,21 +421,27 @@ export default function Profile() {
               border:"none", borderRadius:10,
               fontWeight:700, fontSize:13, cursor:"pointer",
               fontFamily:"'Inter',sans-serif", marginBottom:10,
-              transition:"opacity 0.15s",
-            }}
-            onMouseEnter={e=>e.currentTarget.style.opacity=".85"}
-            onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+            }}>
               💾 Save Profile
             </button>
           )}
 
-          {saved && (
+          {/* Success */}
+          {saved && !saveError && (
             <div style={{ background:D.greenDim, border:`1px solid ${D.green}33`, borderRadius:10, padding:"11px 14px", textAlign:"center", fontSize:12, color:D.green, fontWeight:600, marginBottom:10 }}>
               ✅ Profile saved! Dashboard will use your updated goals.
             </div>
           )}
 
-          {/* ── Quick Actions ── */}
+          {/* Error — shows what actually went wrong */}
+          {saveError && (
+            <div style={{ background:"rgba(255,90,90,0.08)", border:`1px solid rgba(255,90,90,0.2)`, borderRadius:10, padding:"11px 14px", fontSize:12, color:D.coral, marginBottom:10 }}>
+              ⚠️ {saveError}
+              <div style={{ marginTop:4, fontSize:11, color:D.t2 }}>Saved locally — open Supabase and check if <code>weight_kg</code>, <code>height_cm</code>, <code>calGoal</code>, <code>tdee</code>, <code>bmi</code> columns exist in the <code>users</code> table.</div>
+            </div>
+          )}
+
+          {/* Quick Actions */}
           <SectionLabel>Quick Actions</SectionLabel>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:20 }}>
             {[

@@ -94,13 +94,13 @@ function SearchTab({defaultSlot}){
   const QUICK=["Chapati","Dal tadka","Egg boiled","White rice","Chai","Banana","Chicken grilled","Oats","Paneer","Curd"];
 
   useEffect(()=>{
-    if(query.length<2){setResults([]);return;}
+    // ── FIX: minimum 3 chars before searching (matches backend gate) ──────────
+    if(query.length < 3){ setResults([]); return; }
     clearTimeout(searchTimer.current);
     searchTimer.current=setTimeout(async()=>{
       setSearching(true);setError("");
       try{
         const res=await api.get(`/foods/search?q=${encodeURIComponent(query)}`);
-        console.log("Search response:", res.data);
         setResults(res.data.results||[]);
         setError("");
       }catch(e){
@@ -117,14 +117,78 @@ function SearchTab({defaultSlot}){
     if(!selected) return;
     const q = parseFloat(quantity) || 1;
     if(q <= 0) return;
+
+    // ── If unit is grams/ml, calculate directly from selected food data ──────
+    // This ensures what Gemini returned is what gets displayed — no second lookup
+    if(unit === "g" || unit === "ml") {
+      const factor = q / 100;
+      setNutrition({
+        food_key: selected.key,
+        grams:    q,
+        quantity: q,
+        unit,
+        calories: Math.round((selected.calories_per_100g || 0) * factor * 10) / 10,
+        protein:  Math.round((selected.protein_per_100g  || 0) * factor * 10) / 10,
+        carbs:    Math.round((selected.carbs_per_100g    || 0) * factor * 10) / 10,
+        fat:      Math.round((selected.fat_per_100g      || 0) * factor * 10) / 10,
+        fiber:    0,
+        sugar:    0,
+        sodium:   0,
+      });
+      setCalc(false);
+      return;
+    }
+
     let cancelled = false;
     const calc = async () => {
       setCalc(true);
       try {
-        const res = await api.post("/foods/calculate", {food_key: selected.key, quantity: q, unit: unit});
-        if(!cancelled) setNutrition(res.data);
+        const res = await api.post("/foods/calculate", {
+          food_key: selected.key,
+          quantity: q,
+          unit:     unit,
+        });
+        if(!cancelled){
+          // ── Verify result matches what search showed ───────────────────────
+          // If calories_per_100g differs by more than 20%, use search data instead
+          const calcCal100 = res.data.grams > 0
+            ? (res.data.calories / res.data.grams) * 100
+            : 0;
+          const searchCal100 = selected.calories_per_100g || 0;
+          const diff = Math.abs(calcCal100 - searchCal100);
+          if(searchCal100 > 0 && diff > searchCal100 * 0.2) {
+            // Backend returned different food data — use search result directly
+            console.warn(`Calculate mismatch for ${selected.key}: search=${searchCal100} calc=${calcCal100.toFixed(0)} — using search data`);
+            const servingG = res.data.grams || (q * 100);
+            const factor   = servingG / 100;
+            setNutrition({
+              ...res.data,
+              calories: Math.round(searchCal100 * factor * 10) / 10,
+              protein:  Math.round((selected.protein_per_100g || 0) * factor * 10) / 10,
+              carbs:    Math.round((selected.carbs_per_100g   || 0) * factor * 10) / 10,
+              fat:      Math.round((selected.fat_per_100g     || 0) * factor * 10) / 10,
+            });
+          } else {
+            setNutrition(res.data);
+          }
+        }
       } catch(e) {
         console.error("Calculate error:", e?.response?.data || e.message);
+        // Fallback — calculate from search result data directly
+        if(!cancelled && selected.calories_per_100g) {
+          const factor = (q * 100) / 100;
+          setNutrition({
+            food_key: selected.key,
+            grams:    q * 100,
+            quantity: q,
+            unit,
+            calories: Math.round(selected.calories_per_100g * factor * 10) / 10,
+            protein:  Math.round((selected.protein_per_100g || 0) * factor * 10) / 10,
+            carbs:    Math.round((selected.carbs_per_100g   || 0) * factor * 10) / 10,
+            fat:      Math.round((selected.fat_per_100g     || 0) * factor * 10) / 10,
+            fiber: 0, sugar: 0, sodium: 0,
+          });
+        }
       } finally {
         if(!cancelled) setCalc(false);
       }
@@ -136,9 +200,26 @@ function SearchTab({defaultSlot}){
   async function handleLog(){
     if(!nutrition)return;setLogging(true);
     try{
-      await api.post("/log",{food_name:selected.name,calories:nutrition.calories,protein:nutrition.protein,carbs:nutrition.carbs,fat:nutrition.fat,fiber:nutrition.fiber||0,sugar:nutrition.sugar||0,sodium:nutrition.sodium||0,quantity:parseFloat(quantity),unit,meal_type:mealType,meal_time:mealType});
+      await api.post("/log",{
+        food_name: selected.name,
+        calories:  nutrition.calories,
+        protein:   nutrition.protein,
+        carbs:     nutrition.carbs,
+        fat:       nutrition.fat,
+        fiber:     nutrition.fiber  || 0,
+        sugar:     nutrition.sugar  || 0,
+        sodium:    nutrition.sodium || 0,
+        quantity:  parseFloat(quantity),
+        unit,
+        meal_type: mealType,
+        meal_time: mealType,
+      });
       setLogged(true);
-      setTimeout(()=>{setLogged(false);setSelected(null);setNutrition(null);setQuery("");setResults([]);setQuantity(1);setUnit("serving");inputRef.current?.focus();},1800);
+      setTimeout(()=>{
+        setLogged(false);setSelected(null);setNutrition(null);
+        setQuery("");setResults([]);setQuantity(1);setUnit("serving");
+        inputRef.current?.focus();
+      },1800);
     }catch{setError("Failed to log. Try again.");}
     setLogging(false);
   }
@@ -162,8 +243,17 @@ function SearchTab({defaultSlot}){
               style={{flex:1,border:"none",outline:"none",fontSize:14,color:D.t1,background:"transparent",fontFamily:"'DM Sans',system-ui"}}/>
             {query&&<button onClick={()=>{setQuery("");setResults([]);}} style={{background:"none",border:"none",color:D.t3,cursor:"pointer",fontSize:16}}>✕</button>}
           </div>
+
+          {/* ── Hint shown while typing 1-2 chars ───────────────────────────── */}
+          {query.length > 0 && query.length < 3 && (
+            <div style={{textAlign:"center",color:D.t3,fontSize:12,padding:"6px 0"}}>
+              Keep typing…
+            </div>
+          )}
+
           {searching&&<div style={{textAlign:"center",color:D.t3,fontSize:12,padding:"8px 0"}}>Searching...</div>}
           {error&&<div style={{background:"rgba(248,113,113,0.08)",border:`1px solid rgba(248,113,113,0.2)`,borderRadius:12,padding:"10px 14px",fontSize:12,color:D.red,marginBottom:12}}>{error}</div>}
+
           {results.length>0&&(
             <div style={{background:D.s1,borderRadius:16,overflow:"hidden",border:`1px solid ${D.border}`,marginBottom:14}}>
               {results.map((food,i)=>(
@@ -171,12 +261,12 @@ function SearchTab({defaultSlot}){
                   onMouseEnter={e=>e.currentTarget.style.background=D.s2} onMouseLeave={e=>e.currentTarget.style.background=D.s1}>
                   <div>
                     <div style={{fontSize:13,fontWeight:700,color:D.t1}}>{food.name}</div>
-                    <div style={{fontSize:10,color:D.t3,marginTop:2}}>{food.category} · 1 serving</div>
+                    <div style={{fontSize:10,color:D.t3,marginTop:2}}>{food.category} · {food.calories_per_100g} kcal/100g</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                     <div>
                       <div style={{fontSize:16,fontWeight:800,color:D.purple,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{food.calories_per_serving}</div>
-                      <div style={{fontSize:9,color:D.t3,textAlign:"right"}}>kcal</div>
+                      <div style={{fontSize:9,color:D.t3,textAlign:"right"}}>kcal/serving</div>
                     </div>
                     <div style={{width:26,height:26,borderRadius:8,background:D.s2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:D.t2}}>›</div>
                   </div>
@@ -184,13 +274,15 @@ function SearchTab({defaultSlot}){
               ))}
             </div>
           )}
-          {query.length>=2&&!searching&&results.length===0&&(
+
+          {query.length>=3&&!searching&&results.length===0&&(
             <div style={{textAlign:"center",padding:"32px 0",color:D.t3}}>
               <div style={{fontSize:32,marginBottom:8}}>🥗</div>
               <div style={{fontSize:13,fontWeight:600,color:D.t2}}>No results for "{query}"</div>
               <div style={{fontSize:11,marginTop:4}}>Try: chapati, dal, egg, chai...</div>
             </div>
           )}
+
           {query.length===0&&(
             <>
               <div style={{fontSize:9,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:D.t3,marginBottom:10}}>Quick picks</div>
@@ -211,36 +303,50 @@ function SearchTab({defaultSlot}){
       {selected&&(
         <div>
           <button onClick={()=>{setSelected(null);setNutrition(null);}} style={{background:D.s1,border:`1px solid ${D.border}`,borderRadius:10,padding:"7px 14px",color:D.t2,fontSize:12,cursor:"pointer",marginBottom:16,fontFamily:"'DM Sans',system-ui",fontWeight:600}}>← Back</button>
+
           <div style={{marginBottom:16}}>
             <div style={{fontSize:22,fontWeight:900,color:D.t1,letterSpacing:-0.5,marginBottom:4}}>{selected.name}</div>
             <div style={{fontSize:11,color:D.t3}}>{selected.category} · {selected.calories_per_100g} kcal / 100g</div>
           </div>
+
+          {/* ── Nutrition card — shows /foods/calculate result ─────────────── */}
           <div style={{background:D.s1,border:`1px solid ${D.border}`,borderRadius:18,padding:20,marginBottom:12}}>
-            {calculating?<div style={{textAlign:"center",color:D.t3,fontSize:12,padding:"20px 0"}}>Calculating...</div>
-              :nutrition?(
-                <>
-                  <div style={{textAlign:"center",marginBottom:18}}>
-                    <div style={{fontSize:60,fontWeight:900,color:D.t1,letterSpacing:-3,lineHeight:1,fontFamily:"'DM Mono',monospace"}}>{rnd(nutrition.calories)}</div>
-                    <div style={{fontSize:10,color:D.t3,marginTop:4,letterSpacing:2,textTransform:"uppercase"}}>kcal · {rnd(nutrition.grams)}g</div>
-                  </div>
-                  <div style={{display:"flex",justifyContent:"space-around",paddingTop:14,borderTop:`1px solid ${D.border}`}}>
-                    {[{l:"Protein",v:nutrition.protein,c:D.blue},{l:"Carbs",v:nutrition.carbs,c:D.green},{l:"Fat",v:nutrition.fat,c:D.red},{l:"Fiber",v:nutrition.fiber,c:D.amber}].map(m=>(
-                      <div key={m.l} style={{textAlign:"center"}}>
-                        <div style={{fontSize:18,fontWeight:800,color:m.c,fontFamily:"'DM Mono',monospace"}}>{rnd(m.v)}g</div>
-                        <div style={{fontSize:9,color:D.t3,marginTop:3}}>{m.l}</div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ):<div style={{textAlign:"center",color:D.t3,fontSize:12,padding:"20px 0"}}>Select quantity below</div>}
+            {calculating
+              ? <div style={{textAlign:"center",color:D.t3,fontSize:12,padding:"20px 0"}}>Calculating...</div>
+              : nutrition
+                ? (
+                  <>
+                    <div style={{textAlign:"center",marginBottom:18}}>
+                      <div style={{fontSize:60,fontWeight:900,color:D.t1,letterSpacing:-3,lineHeight:1,fontFamily:"'DM Mono',monospace"}}>{rnd(nutrition.calories)}</div>
+                      <div style={{fontSize:10,color:D.t3,marginTop:4,letterSpacing:2,textTransform:"uppercase"}}>kcal · {rnd(nutrition.grams)}g</div>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-around",paddingTop:14,borderTop:`1px solid ${D.border}`}}>
+                      {[
+                        {l:"Protein", v:nutrition.protein, c:D.blue},
+                        {l:"Carbs",   v:nutrition.carbs,   c:D.green},
+                        {l:"Fat",     v:nutrition.fat,     c:D.red},
+                        {l:"Fiber",   v:nutrition.fiber,   c:D.amber},
+                      ].map(m=>(
+                        <div key={m.l} style={{textAlign:"center"}}>
+                          <div style={{fontSize:18,fontWeight:800,color:m.c,fontFamily:"'DM Mono',monospace"}}>{rnd(m.v)}g</div>
+                          <div style={{fontSize:9,color:D.t3,marginTop:3}}>{m.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
+                : <div style={{textAlign:"center",color:D.t3,fontSize:12,padding:"20px 0"}}>Select quantity below</div>
+            }
           </div>
+
+          {/* ── Quantity controls ─────────────────────────────────────────────── */}
           <div style={{background:D.s1,border:`1px solid ${D.border}`,borderRadius:18,padding:18,marginBottom:12}}>
             <div style={{fontSize:9,fontWeight:700,color:D.t3,letterSpacing:2,textTransform:"uppercase",marginBottom:14}}>Quantity</div>
             <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
-              <button onClick={()=>setQuantity(q=>Math.round(Math.max(0.25, (parseFloat(q)||1) - 0.25) * 100) / 100)} style={{width:46,height:46,borderRadius:14,background:D.s2,border:`1px solid ${D.border}`,fontSize:24,fontWeight:700,cursor:"pointer",color:D.t1,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-              <input type="number" value={quantity} min="0.25" step="0.25" onChange={e=>setQuantity(parseFloat(e.target.value) || 1)}
+              <button onClick={()=>setQuantity(q=>Math.round(Math.max(0.25,(parseFloat(q)||1)-0.25)*100)/100)} style={{width:46,height:46,borderRadius:14,background:D.s2,border:`1px solid ${D.border}`,fontSize:24,fontWeight:700,cursor:"pointer",color:D.t1,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+              <input type="number" value={quantity} min="0.25" step="0.25" onChange={e=>setQuantity(parseFloat(e.target.value)||1)}
                 style={{flex:1,textAlign:"center",fontSize:28,fontWeight:900,border:`1px solid ${D.border}`,borderRadius:14,padding:"10px",color:D.t1,outline:"none",background:D.s2,fontFamily:"'DM Mono',monospace"}}/>
-              <button onClick={()=>setQuantity(q=>Math.round(((parseFloat(q)||1) + 0.25) * 100) / 100)} style={{width:46,height:46,borderRadius:14,background:D.s2,border:`1px solid ${D.border}`,fontSize:24,fontWeight:700,cursor:"pointer",color:D.t1,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+              <button onClick={()=>setQuantity(q=>Math.round(((parseFloat(q)||1)+0.25)*100)/100)} style={{width:46,height:46,borderRadius:14,background:D.s2,border:`1px solid ${D.border}`,fontSize:24,fontWeight:700,cursor:"pointer",color:D.t1,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
             </div>
             <div style={{fontSize:9,fontWeight:700,color:D.t3,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Unit</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
@@ -249,12 +355,127 @@ function SearchTab({defaultSlot}){
               ))}
             </div>
           </div>
+
+          {/* ── Meal selector ─────────────────────────────────────────────────── */}
+          <div style={{background:D.s1,border:`1px solid ${D.border}`,borderRadius:18,padding:18,marginBottom:12}}>
+            <div style={{fontSize:9,fontWeight:700,color:D.t3,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Meal</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {MEAL_SLOTS.map(s=>(
+                <button key={s.key} onClick={()=>setMealType(s.key)} style={{padding:"8px 14px",borderRadius:20,border:`1px solid ${mealType===s.key?D.purple:D.border}`,background:mealType===s.key?D.purple:D.s2,color:mealType===s.key?"#000":D.t3,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',system-ui",transition:"all 0.15s"}}>
+                  {s.emoji} {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {error&&<div style={{background:"rgba(248,113,113,0.08)",border:`1px solid rgba(248,113,113,0.2)`,borderRadius:12,padding:"10px 14px",fontSize:12,color:D.red,marginBottom:12}}>{error}</div>}
+
           <button onClick={handleLog} disabled={logging||!nutrition||logged} style={{width:"100%",padding:"16px 0",background:logged?D.green:D.purple,color:"#000",border:"none",borderRadius:16,fontSize:15,fontWeight:900,cursor:logging?"not-allowed":"pointer",fontFamily:"'DM Sans',system-ui",transition:"all 0.2s",boxShadow:logged?`0 4px 20px rgba(52,211,153,0.3)`:`0 4px 20px rgba(167,139,250,0.3)`}}>
             {logged?"✓ Added!":logging?"Logging…":`Add to ${MEAL_SLOTS.find(s=>s.key===mealType)?.emoji} ${MEAL_SLOTS.find(s=>s.key===mealType)?.label}`}
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Custom Food Form ─────────────────────────────────────────────────────────
+function CustomFoodForm({ onSuccess }) {
+  const [form, setForm] = useState({
+    food_name:"",calories_100g:"",protein:"",carbs:"",fat:"",
+    fiber:"",sugar:"",sodium:"",serving_grams:"100",brand:"",
+  });
+  const [saving, setSaving] = useState(false);
+  const [done,   setDone]   = useState(false);
+  const [error,  setError]  = useState("");
+  const update = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  const fields = [
+    { key:"calories_100g", label:"Calories",     unit:"kcal/100g", required:true,  color:D.amber  },
+    { key:"protein",       label:"Protein",      unit:"g/100g",    required:false, color:D.blue   },
+    { key:"carbs",         label:"Carbs",        unit:"g/100g",    required:false, color:D.green  },
+    { key:"fat",           label:"Fat",          unit:"g/100g",    required:false, color:D.red    },
+    { key:"fiber",         label:"Fiber",        unit:"g/100g",    required:false, color:"#C084FC"},
+    { key:"sugar",         label:"Sugar",        unit:"g/100g",    required:false, color:D.amber  },
+    { key:"sodium",        label:"Sodium",       unit:"mg/100g",   required:false, color:D.t2     },
+    { key:"serving_grams", label:"Serving Size", unit:"grams",     required:false, color:D.purple },
+  ];
+
+  async function handleSave() {
+    if (!form.food_name.trim()) { setError("Food name is required"); return; }
+    if (!form.calories_100g)    { setError("Calories is required");  return; }
+    setSaving(true); setError("");
+    try {
+      await api.post("/foods/custom", {
+        food_name:     form.food_name.trim(),
+        calories_100g: parseFloat(form.calories_100g) || 0,
+        protein:       parseFloat(form.protein)       || 0,
+        carbs:         parseFloat(form.carbs)         || 0,
+        fat:           parseFloat(form.fat)           || 0,
+        fiber:         parseFloat(form.fiber)         || 0,
+        sugar:         parseFloat(form.sugar)         || 0,
+        sodium:        parseFloat(form.sodium)        || 0,
+        serving_grams: parseFloat(form.serving_grams) || 100,
+        brand:         form.brand.trim(),
+      });
+      setDone(true);
+      setTimeout(() => { onSuccess && onSuccess(); }, 1500);
+    } catch { setError("Failed to save. Try again."); }
+    setSaving(false);
+  }
+
+  return (
+    <div>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:18,fontWeight:900,color:D.t1,letterSpacing:-0.5,marginBottom:4}}>Add Custom Food</div>
+        <div style={{fontSize:12,color:D.t3}}>Add any food from a nutrition label — saved forever to your account</div>
+      </div>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:9,fontWeight:700,color:D.t3,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Food Name *</div>
+        <input type="text" placeholder="e.g. Amul Butter, Chicken 65, Protein Bar..." value={form.food_name} onChange={e=>update("food_name",e.target.value)}
+          style={{width:"100%",background:D.s1,border:`1px solid ${D.border2}`,borderRadius:12,padding:"12px 14px",fontSize:14,color:D.t1,outline:"none",fontFamily:"'DM Sans',system-ui",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:9,fontWeight:700,color:D.t3,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Brand (optional)</div>
+        <input type="text" placeholder="e.g. Amul, Britannia, Nestle..." value={form.brand} onChange={e=>update("brand",e.target.value)}
+          style={{width:"100%",background:D.s1,border:`1px solid ${D.border}`,borderRadius:12,padding:"11px 14px",fontSize:13,color:D.t1,outline:"none",fontFamily:"'DM Sans',system-ui",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{fontSize:9,fontWeight:700,color:D.t3,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Nutrition Info (from label)</div>
+      <div style={{background:D.s1,border:`1px solid ${D.border}`,borderRadius:16,overflow:"hidden",marginBottom:16}}>
+        {fields.map((f,i)=>(
+          <div key={f.key} style={{display:"flex",alignItems:"center",padding:"12px 14px",borderBottom:i<fields.length-1?`1px solid ${D.border}`:"none"}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:f.color}}>{f.label}{f.required?" *":""}</div>
+              <div style={{fontSize:10,color:D.t3,marginTop:1}}>{f.unit}</div>
+            </div>
+            <input type="number" placeholder="0" value={form[f.key]} onChange={e=>update(f.key,e.target.value)}
+              style={{width:80,textAlign:"right",background:D.s2,border:`1px solid ${D.border}`,borderRadius:8,padding:"7px 10px",fontSize:14,fontWeight:700,color:f.color,outline:"none",fontFamily:"'DM Mono',monospace",boxSizing:"border-box"}}/>
+          </div>
+        ))}
+      </div>
+      {form.calories_100g&&(
+        <div style={{background:"rgba(167,139,250,0.06)",border:"1px solid rgba(167,139,250,0.15)",borderRadius:14,padding:14,marginBottom:16}}>
+          <div style={{fontSize:9,fontWeight:700,color:D.purple,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Preview — per serving ({form.serving_grams||100}g)</div>
+          <div style={{display:"flex",gap:16}}>
+            {[
+              {l:"Cal",     v:Math.round((parseFloat(form.calories_100g)||0)*(parseFloat(form.serving_grams)||100)/100), c:D.amber},
+              {l:"Protein", v:Math.round((parseFloat(form.protein)||0)*(parseFloat(form.serving_grams)||100)/100),       c:D.blue},
+              {l:"Carbs",   v:Math.round((parseFloat(form.carbs)||0)*(parseFloat(form.serving_grams)||100)/100),         c:D.green},
+              {l:"Fat",     v:Math.round((parseFloat(form.fat)||0)*(parseFloat(form.serving_grams)||100)/100),           c:D.red},
+            ].map(m=>(
+              <div key={m.l} style={{textAlign:"center"}}>
+                <div style={{fontSize:18,fontWeight:900,color:m.c,fontFamily:"'DM Mono',monospace"}}>{m.v}</div>
+                <div style={{fontSize:9,color:D.t3,marginTop:2}}>{m.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {error&&<div style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:12,padding:"10px 14px",fontSize:12,color:D.red,marginBottom:14}}>⚠️ {error}</div>}
+      <button onClick={handleSave} disabled={saving||done} style={{width:"100%",padding:"15px 0",background:done?D.green:D.purple,color:"#000",border:"none",borderRadius:16,fontSize:15,fontWeight:900,cursor:saving?"not-allowed":"pointer",fontFamily:"'DM Sans',system-ui",transition:"all 0.2s"}}>
+        {done?"✓ Food Added! Redirecting...":saving?"Saving...":"Save Food"}
+      </button>
+      <div style={{fontSize:10,color:D.t3,textAlign:"center",marginTop:10}}>💡 This food will appear in search results immediately</div>
     </div>
   );
 }
@@ -266,11 +487,18 @@ export default function Scanner(){
   const[tab,setTab]=useState("search");
   const[result,setResult]=useState(null);const[loading,setLoading]=useState(false);
   const[error,setError]=useState("");const[imgFile,setImgFile]=useState(null);
-  const[imgPrev,setImgPrev]=useState(null);const[vidFile,setVidFile]=useState(null);
-  const[text,setText]=useState("");const[barcode,setBarcode]=useState("");
-  const[transcript,setTranscript]=useState("");const[listening,setListening]=useState(false);
-  const fileRef=useRef();const vidRef=useRef();
-  const TABS=[{id:"search",emoji:"🔍",label:"Search"},{id:"image",emoji:"📷",label:"Photo"},{id:"text",emoji:"📝",label:"Text"},{id:"barcode",emoji:"📦",label:"Barcode"},{id:"voice",emoji:"🎤",label:"Voice"}];
+  const[imgPrev,setImgPrev]=useState(null);const[text,setText]=useState("");
+  const[barcode,setBarcode]=useState("");const[transcript,setTranscript]=useState("");
+  const[listening,setListening]=useState(false);
+  const fileRef=useRef();
+  const TABS=[
+    {id:"search", emoji:"🔍", label:"Search"},
+    {id:"image",  emoji:"📷", label:"Photo"},
+    {id:"text",   emoji:"📝", label:"Text"},
+    {id:"barcode",emoji:"📦", label:"Barcode"},
+    {id:"voice",  emoji:"🎤", label:"Voice"},
+    {id:"custom", emoji:"➕", label:"Add Food"},
+  ];
 
   function switchTab(id){setTab(id);setResult(null);setError("");}
   function handleImg(e){const f=e.target.files[0];if(!f)return;setImgFile(f);setImgPrev(URL.createObjectURL(f));setResult(null);setError("");}
@@ -310,26 +538,28 @@ export default function Scanner(){
             ))}
           </div>
         </div>
+
         <div style={{padding:"16px"}}>
-          {tab==="search"&&<SearchTab defaultSlot={defaultSlot}/>}
-          {tab==="image"&&(
+          {tab==="search"  && <SearchTab defaultSlot={defaultSlot}/>}
+          {tab==="image"   && (
             <>
               <div onClick={()=>!imgPrev&&fileRef.current.click()} style={{border:`1.5px dashed ${imgPrev?"transparent":D.border2}`,borderRadius:16,overflow:"hidden",cursor:imgPrev?"default":"pointer",background:imgPrev?"transparent":D.s1}}>
-                {imgPrev?(<div style={{position:"relative"}}><img src={imgPrev} alt="food" style={{width:"100%",maxHeight:220,objectFit:"cover",display:"block",borderRadius:16}}/><button onClick={e=>{e.stopPropagation();fileRef.current.click();}} style={{position:"absolute",bottom:10,right:10,background:"rgba(0,0,0,0.7)",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>Change</button></div>)
+                {imgPrev
+                  ?(<div style={{position:"relative"}}><img src={imgPrev} alt="food" style={{width:"100%",maxHeight:220,objectFit:"cover",display:"block",borderRadius:16}}/><button onClick={e=>{e.stopPropagation();fileRef.current.click();}} style={{position:"absolute",bottom:10,right:10,background:"rgba(0,0,0,0.7)",color:"#fff",border:"none",borderRadius:99,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>Change</button></div>)
                   :(<div style={{padding:"36px 20px",textAlign:"center"}}><div style={{fontSize:40,marginBottom:10}}>📷</div><div style={{fontSize:13,fontWeight:700,color:D.t2,marginBottom:4}}>Tap to upload food photo</div><div style={{fontSize:10,color:D.t3}}>JPG · PNG · WEBP</div></div>)}
               </div>
               <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleImg}/>
               <button onClick={analyzeImage} disabled={!imgFile||loading} style={aBtn(!imgFile||loading)}>{loading?"Analyzing with Gemini…":"🔍 Analyze Photo"}</button>
             </>
           )}
-          {tab==="text"&&(
+          {tab==="text"    && (
             <>
               <textarea value={text} onChange={e=>setText(e.target.value)} placeholder={"Describe your meal…\n\nExamples:\n• 2 eggs and 1 chapati\n• 1 bowl dal with 2 rotis\n• Oats with banana and honey"} style={{width:"100%",background:D.s1,border:`1px solid ${D.border}`,borderRadius:14,fontSize:13,padding:"12px 14px",minHeight:150,resize:"none",outline:"none",color:D.t1,lineHeight:1.65,boxSizing:"border-box"}}/>
               <div style={{fontSize:10,color:D.t3,marginTop:6}}>💡 Include quantities for better accuracy</div>
               <button onClick={analyzeText} disabled={!text.trim()||loading} style={aBtn(!text.trim()||loading)}>{loading?"Analyzing…":"🧠 Analyze Text"}</button>
             </>
           )}
-          {tab==="barcode"&&(
+          {tab==="barcode" && (
             <>
               <div style={{textAlign:"center",padding:"24px 0 16px",fontSize:44}}>📦</div>
               <input type="text" value={barcode} onChange={e=>setBarcode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&lookupBarcode()} placeholder="Enter barcode number" maxLength={14} style={{width:"100%",background:D.s1,border:`1px solid ${D.border}`,borderRadius:14,fontSize:20,padding:"14px",outline:"none",textAlign:"center",letterSpacing:3,fontFamily:"'DM Mono',monospace",color:D.t1,boxSizing:"border-box"}}/>
@@ -337,7 +567,7 @@ export default function Scanner(){
               <button onClick={lookupBarcode} disabled={!barcode.trim()||loading} style={aBtn(!barcode.trim()||loading)}>{loading?"Looking up…":"🔢 Lookup Barcode"}</button>
             </>
           )}
-          {tab==="voice"&&(
+          {tab==="voice"   && (
             <>
               <div style={{textAlign:"center",padding:"24px 0 14px"}}>
                 <button onClick={listening?undefined:startListening} style={{width:80,height:80,borderRadius:24,border:"none",fontSize:32,cursor:"pointer",margin:"0 auto 12px",display:"block",background:listening?"rgba(248,113,113,0.1)":D.s1,outline:`2px solid ${listening?D.red:D.border2}`,animation:listening?"pulse 1s infinite":"none",transition:"all 0.2s"}}>🎙️</button>
@@ -347,10 +577,13 @@ export default function Scanner(){
               {transcript&&<button onClick={analyzeVoice} disabled={loading} style={aBtn(loading)}>{loading?"Analyzing…":"🧠 Analyze Speech"}</button>}
             </>
           )}
+
           {error&&tab!=="search"&&(<div style={{marginTop:12,padding:"10px 14px",background:"rgba(248,113,113,0.08)",border:`1px solid rgba(248,113,113,0.2)`,borderRadius:12,fontSize:12,color:D.red}}>⚠️ {error}</div>)}
           {loading&&(<div style={{marginTop:12,padding:"16px",background:D.s1,border:`1px solid ${D.border}`,borderRadius:14,textAlign:"center"}}><div style={{fontSize:12,color:D.t3,marginBottom:8}}>Analyzing your food…</div><div style={{display:"flex",gap:6,justifyContent:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:D.purple,animation:`pulse 1s ${i*0.2}s infinite`}}/>)}</div></div>)}
           {result&&!loading&&<ResultCard result={result} mealType={defaultSlot} onClear={()=>setResult(null)}/>}
-          {!result&&!loading&&!error&&tab!=="search"&&(<div style={{marginTop:16,padding:"14px",background:D.s1,border:`1px solid ${D.border}`,borderRadius:14}}><div style={{fontSize:9,color:D.t3,marginBottom:8,textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Tips</div>{[{tab:"image",tip:"Take photo in good lighting"},{tab:"text",tip:"Include quantities: '2 eggs, 1 cup rice'"},{tab:"barcode",tip:"Works with packaged foods worldwide"},{tab:"voice",tip:"Say clearly: 'I had 2 rotis with dal'"}].filter(t=>t.tab===tab).map(t=><div key={t.tip} style={{fontSize:11,color:D.t2,lineHeight:1.5}}>💡 {t.tip}</div>)}</div>)}
+          {!result&&!loading&&!error&&tab!=="search"&&tab!=="custom"&&(<div style={{marginTop:16,padding:"14px",background:D.s1,border:`1px solid ${D.border}`,borderRadius:14}}><div style={{fontSize:9,color:D.t3,marginBottom:8,textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Tips</div>{[{tab:"image",tip:"Take photo in good lighting"},{tab:"text",tip:"Include quantities: '2 eggs, 1 cup rice'"},{tab:"barcode",tip:"Works with packaged foods worldwide"},{tab:"voice",tip:"Say clearly: 'I had 2 rotis with dal'"}].filter(t=>t.tab===tab).map(t=><div key={t.tip} style={{fontSize:11,color:D.t2,lineHeight:1.5}}>💡 {t.tip}</div>)}</div>)}
+
+          {tab==="custom"&&<CustomFoodForm onSuccess={()=>switchTab("search")}/>}
         </div>
       </div>
     </>
