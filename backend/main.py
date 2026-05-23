@@ -54,15 +54,16 @@ security = HTTPBearer(auto_error=False)
 # ── CORS ───────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-allow_origins=[
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://foodmood-iota.vercel.app",
-    "https://foodmood-git-main-atharva-lawales-projects.vercel.app",
-],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://foodmood-iota.vercel.app",
+        "https://foodmood-git-main-atharva-lawales-projects.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origin_regex="https://.*\.vercel\.app",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
