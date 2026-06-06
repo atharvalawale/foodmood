@@ -2,45 +2,38 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 
-// ─── Same tokens as Dashboard ─────────────────────────────────────────────────
-const D = {
-  yellow:"#FFD60A", yellowDim:"rgba(255,214,10,0.12)", yellowText:"#B8960A",
-  bg:"#0F0F0F", s1:"#181818", s2:"#222222", s3:"#2A2A2A",
-  border:"rgba(255,255,255,0.07)", border2:"rgba(255,255,255,0.12)",
-  green:"#00C97A", greenDim:"rgba(0,201,122,0.12)",
-  coral:"#FF5A5A", coralDim:"rgba(255,90,90,0.12)",
-  blue:"#4D9EFF",  blueDim:"rgba(77,158,255,0.12)",
-  amber:"#FFAB00", amberDim:"rgba(255,171,0,0.12)",
-  purple:"#9B7FFF",
-  t1:"#F0F0F0", t2:"#888888", t3:"#444444",
-};
-
-const inputStyle = {
-  width:"100%",
-  background:D.s2,
-  border:`1px solid ${D.border2}`,
-  borderRadius:10,
-  fontSize:13,
-  padding:"12px 14px",
-  outline:"none",
-  boxSizing:"border-box",
-  fontFamily:"'Inter',sans-serif",
-  color:D.t1,
-  transition:"border-color 0.2s",
+// ─────────────────────────────────────────────
+// COLOUR TOKENS — same as Dashboard
+// Night mode: swap C values (see Dashboard.jsx comment)
+// ─────────────────────────────────────────────
+const C = {
+  bg:       "#F2F2F7",
+  surface:  "#FFFFFF",
+  surface2: "#F2F2F7",
+  text:     "#1C1C1E",
+  textSub:  "#8E8E93",
+  sep:      "#E5E5EA",
+  accent:   "#1C1C1E",
+  green:    "#30D158",
+  blue:     "#007AFF",
+  red:      "#FF3B30",
+  amber:    "#FF9500",
 };
 
 export default function Login() {
   const navigate = useNavigate();
-  const [mode,     setMode]    = useState("login");
-  const [email,    setEmail]   = useState("");
-  const [password, setPassword]= useState("");
-  const [name,     setName]    = useState("");
-  const [loading,  setLoading] = useState(false);
-  const [error,    setError]   = useState("");
-  const [success,  setSuccess] = useState("");
 
+  // ── State — all unchanged ──
+  const [mode,     setMode]     = useState("login");
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [name,     setName]     = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+  const [success,  setSuccess]  = useState("");
+
+  // ── handleSubmit — unchanged ──
   async function handleSubmit() {
-    // Basic validation
     if (!email || !password) { setError("Please fill all fields."); return; }
     if (mode === "signup" && !name) { setError("Please enter your name."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
@@ -51,45 +44,28 @@ export default function Login() {
 
     try {
       if (mode === "signup") {
-        // ── REGISTER ──────────────────────────────────────────────────────────
-        // Calls POST /auth/register → creates real account in Supabase
         const res = await api.post("/auth/register", { email, password, name });
-
-        // Save user info to localStorage so other pages can read it
         const user = {
           id:    res.data.user_id,
           email: res.data.email,
-          name:  name,
-          token: null, // no token yet — user must verify email first (if enabled)
+          name,
+          token: null,
         };
         localStorage.setItem("foodmood_user", JSON.stringify(user));
-
-        // Show success message — Supabase sends a confirmation email by default
-        setSuccess("✅ Account created! Check your email to confirm, then log in.");
+        setSuccess("Account created! Check your email to confirm, then log in.");
         setMode("login");
-
       } else {
-        // ── LOGIN ─────────────────────────────────────────────────────────────
-        // Calls POST /auth/login → returns access_token from Supabase
         const res = await api.post("/auth/login", { email, password });
-
-        // Save user + token to localStorage
-        // The token is used to make authenticated requests later
         const user = {
           id:    res.data.user_id,
           email: res.data.email,
           name:  res.data.email.split("@")[0],
-          token: res.data.access_token,  // ← REAL token from Supabase
+          token: res.data.access_token,
         };
         localStorage.setItem("foodmood_user", JSON.stringify(user));
-
-        // Go to dashboard
         navigate("/dashboard");
       }
-
     } catch (err) {
-      // Show the error message from the backend
-      // err.response.data.detail is the message we return from FastAPI
       const msg = err?.response?.data?.detail || "Something went wrong. Please try again.";
       setError(msg);
     }
@@ -97,197 +73,158 @@ export default function Login() {
     setLoading(false);
   }
 
-  // ── Demo login — still works, no real account needed ──────────────────────
+  // ── demoLogin — unchanged ──
   function demoLogin() {
     const demoUser = {
       id:    "demo-user-001",
       name:  "Atharva",
       email: "demo@foodmood.ai",
-      token: null,  // demo user has no real token
-      goal:"muscle_gain", weight_kg:72, height_cm:175,
-      age:22, gender:"Male",
-      activity_level:"Moderately Active (exercise 3-5 days)",
-      diet_type:"No restriction", allergies:"",
+      token: null,
+      goal: "muscle_gain", weight_kg: 72, height_cm: 175,
+      age: 22, gender: "Male",
+      activity_level: "Moderately Active (exercise 3-5 days)",
+      diet_type: "No restriction", allergies: "",
     };
     localStorage.setItem("foodmood_user", JSON.stringify(demoUser));
     navigate("/dashboard");
   }
 
+  // ── Shared input style ──
+  const inputStyle = {
+    width: "100%",
+    background: C.surface2,
+    border: `1px solid ${C.sep}`,
+    borderRadius: 12,
+    fontSize: 15,
+    padding: "14px 16px",
+    outline: "none",
+    fontFamily: "'Inter', sans-serif",
+    color: C.text,
+    transition: "border-color 0.15s",
+    WebkitAppearance: "none",
+  };
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-        *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
-        html,body { background:${D.bg}; color:${D.t1}; }
-
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { background: ${C.bg}; }
         .login-root {
-          min-height:100vh;
-          background:${D.bg};
-          font-family:'Inter',sans-serif;
-          display:flex; flex-direction:column;
-          align-items:center; justify-content:center;
-          padding:24px 16px;
+          min-height: 100vh;
+          background: ${C.bg};
+          font-family: 'Inter', -apple-system, sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 24px 16px;
+          -webkit-font-smoothing: antialiased;
         }
-
-        .login-box {
-          width:100%; max-width:400px;
-          background:${D.s1};
-          border:1px solid ${D.border};
-          border-radius:16px;
-          overflow:hidden;
+        .login-wrap {
+          width: 100%;
+          max-width: 390px;
         }
-
-        /* top accent bar */
-        .login-top {
-          background:${D.yellowDim};
-          border-bottom:1px solid ${D.yellow}22;
-          padding:28px 24px 24px;
-          text-align:center;
+        input::placeholder { color: ${C.textSub}; opacity: 0.6; }
+        input:focus { border-color: ${C.accent} !important; outline: none; }
+        .seg-btn {
+          flex: 1;
+          padding: 8px 0;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: 'Inter', sans-serif;
+          transition: all 0.18s;
         }
-
-        .logo {
-          display:inline-flex; align-items:center; gap:8px;
-          margin-bottom:20px;
-        }
-        .logo-icon {
-          width:34px; height:34px; background:${D.yellow};
-          border-radius:9px; display:flex; align-items:center;
-          justify-content:center; font-size:18px;
-        }
-        .logo-name {
-          font-size:16px; font-weight:700; color:${D.t1};
-        }
-
-        .login-heading {
-          font-size:20px; font-weight:700;
-          color:${D.t1}; margin-bottom:6px;
-          letter-spacing:-0.3px;
-        }
-        .login-sub { font-size:12px; color:${D.t2}; line-height:1.5; }
-
-        /* body */
-        .login-body { padding:20px 24px 28px; }
-
-        /* toggle */
-        .mode-toggle {
-          display:flex; background:${D.s2};
-          border:1px solid ${D.border};
-          border-radius:10px; padding:3px;
-          margin-bottom:20px; gap:3px;
-        }
-        .mode-btn {
-          flex:1; padding:9px 0;
-          border:none; border-radius:8px;
-          font-weight:600; font-size:12px;
-          cursor:pointer; font-family:'Inter',sans-serif;
-          transition:all 0.18s;
-        }
-        .mode-btn.active  { background:${D.yellow}; color:${D.bg}; }
-        .mode-btn.inactive{ background:transparent; color:${D.t2}; }
-
-        /* field */
-        .field { margin-bottom:12px; }
-        .field-label {
-          font-size:10px; font-weight:600;
-          color:${D.t2}; margin-bottom:5px;
-          text-transform:uppercase; letter-spacing:.4px;
-        }
-        input::placeholder { color:${D.t3}; }
-        input:focus { border-color:${D.yellow}66 !important; }
-
-        /* divider */
-        .divider {
-          display:flex; align-items:center;
-          gap:10px; margin:14px 0;
-        }
-        .divider-line { flex:1; height:1px; background:${D.border}; }
-        .divider-text { font-size:10px; color:${D.t3}; font-family:'DM Mono',monospace; }
-
-        /* error */
-        .error-box {
-          background:${D.coralDim};
-          border:1px solid ${D.coral}33;
-          border-radius:9px; padding:9px 12px;
-          font-size:11px; color:${D.coral};
-          margin-bottom:12px;
-        }
-
-        /* success */
-        .success-box {
-          background:${D.greenDim};
-          border:1px solid ${D.green}33;
-          border-radius:9px; padding:9px 12px;
-          font-size:11px; color:${D.green};
-          margin-bottom:12px;
-        }
-
-        /* features card */
-        .features-card {
-          background:${D.yellowDim};
-          border:1px solid ${D.yellow}22;
-          border-radius:10px; padding:14px;
-          margin-bottom:16px;
-        }
-        .features-title {
-          font-size:10px; font-weight:700;
-          color:${D.yellow}; margin-bottom:10px;
-          text-transform:uppercase; letter-spacing:.4px;
-        }
+        .tappable { cursor: pointer; transition: opacity 0.15s; }
+        .tappable:active { opacity: 0.6; }
         .feature-row {
-          font-size:11px; color:${D.t2};
-          margin-bottom:6px; display:flex; gap:6px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 0;
+          border-bottom: 0.5px solid ${C.sep};
+          font-size: 14px;
+          color: ${C.text};
+          font-weight: 500;
         }
-
-        /* back link */
-        .back-link { text-align:center; margin-top:4px; }
-        .back-link span {
-          font-size:11px; color:${D.t3};
-          cursor:pointer; transition:color 0.15s;
+        .feature-row:last-child { border-bottom: none; padding-bottom: 0; }
+        .feature-icon {
+          width: 32px; height: 32px;
+          border-radius: 8px;
+          background: ${C.surface2};
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+          font-size: 16px;
         }
-        .back-link span:hover { color:${D.yellow}; }
       `}</style>
 
       <div className="login-root">
-        <div className="login-box">
+        <div className="login-wrap">
 
-          {/* ── Top ── */}
-          <div className="login-top">
-            <div className="logo">
-              <div className="logo-icon">🍱</div>
-              <span className="logo-name">FoodMood</span>
+          {/* ── LOGO + HEADING ── */}
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 16,
+              background: C.accent,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              margin: "0 auto 16px",
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: 0.5 }}>FM</span>
             </div>
-            <div className="login-heading">
-              {mode === "login" ? "Welcome back 👋" : "Create account 🚀"}
+            <div style={{ fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: -0.5, marginBottom: 6 }}>
+              {mode === "login" ? "Welcome back" : "Create account"}
             </div>
-            <div className="login-sub">
+            <div style={{ fontSize: 14, color: C.textSub, fontWeight: 400 }}>
               {mode === "login"
-                ? "Log in to track your nutrition and reach your goals."
-                : "Join FoodMood and start your nutrition journey today."}
+                ? "Log in to track your nutrition and goals"
+                : "Start your nutrition journey today"}
             </div>
           </div>
 
-          {/* ── Body ── */}
-          <div className="login-body">
+          {/* ── SEGMENTED CONTROL ── */}
+          <div style={{
+            display: "flex",
+            background: C.surface,
+            border: `0.5px solid ${C.sep}`,
+            borderRadius: 12, padding: 3, gap: 3,
+            marginBottom: 24,
+          }}>
+            {[{ val: "login", label: "Log In" }, { val: "signup", label: "Sign Up" }].map(m => (
+              <button
+                key={m.val}
+                className="seg-btn"
+                onClick={() => { setMode(m.val); setError(""); setSuccess(""); }}
+                style={{
+                  background: mode === m.val ? C.accent : "transparent",
+                  color:      mode === m.val ? "#fff"   : C.textSub,
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
 
-            {/* Mode toggle */}
-            <div className="mode-toggle">
-              {[{val:"login",label:"Log In"},{val:"signup",label:"Sign Up"}].map(m => (
-                <button
-                  key={m.val}
-                  className={`mode-btn ${mode===m.val?"active":"inactive"}`}
-                  onClick={() => { setMode(m.val); setError(""); setSuccess(""); }}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+          {/* ── FORM CARD ── */}
+          <div style={{
+            background: C.surface,
+            borderRadius: 20,
+            padding: "20px 20px",
+            marginBottom: 12,
+          }}>
 
-            {/* Name (signup only) */}
+            {/* Name — signup only */}
             {mode === "signup" && (
-              <div className="field">
-                <div className="field-label">Full Name</div>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, marginBottom: 6, letterSpacing: 0.3 }}>
+                  Full Name
+                </div>
                 <input
-                  type="text" value={name} placeholder="Atharva Lawale"
+                  type="text"
+                  value={name}
+                  placeholder="Atharva Lawale"
                   onChange={e => setName(e.target.value)}
                   style={inputStyle}
                 />
@@ -295,26 +232,34 @@ export default function Login() {
             )}
 
             {/* Email */}
-            <div className="field">
-              <div className="field-label">Email Address</div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, marginBottom: 6, letterSpacing: 0.3 }}>
+                Email
+              </div>
               <input
-                type="email" value={email} placeholder="you@example.com"
+                type="email"
+                value={email}
+                placeholder="you@example.com"
                 onChange={e => setEmail(e.target.value)}
                 style={inputStyle}
               />
             </div>
 
             {/* Password */}
-            <div className="field">
-              <div className="field-label">Password</div>
+            <div style={{ marginBottom: mode === "login" ? 8 : 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, marginBottom: 6, letterSpacing: 0.3 }}>
+                Password
+              </div>
               <input
-                type="password" value={password} placeholder="••••••••"
+                type="password"
+                value={password}
+                placeholder="••••••••"
                 onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleSubmit()}
                 style={inputStyle}
               />
               {mode === "signup" && (
-                <div style={{ fontSize:10, color:D.t3, marginTop:4 }}>
+                <div style={{ fontSize: 11, color: C.textSub, marginTop: 5 }}>
                   Minimum 6 characters
                 </div>
               )}
@@ -322,90 +267,122 @@ export default function Login() {
 
             {/* Forgot password */}
             {mode === "login" && (
-              <div style={{ textAlign:"right", marginBottom:16, marginTop:-4 }}>
-                <span style={{ fontSize:11, color:D.t3, cursor:"pointer" }}>
+              <div style={{ textAlign: "right", marginBottom: 16 }}>
+                <span style={{ fontSize: 13, color: C.blue, fontWeight: 500, cursor: "pointer" }}>
                   Forgot password?
                 </span>
               </div>
             )}
 
-            {mode === "signup" && <div style={{ marginBottom:16 }} />}
+            {/* Error */}
+            {error && (
+              <div style={{
+                background: "#FFF0F0", border: `0.5px solid ${C.red}33`,
+                borderRadius: 10, padding: "10px 14px",
+                fontSize: 13, color: C.red, marginBottom: 12,
+              }}>
+                {error}
+              </div>
+            )}
 
-            {/* Error message */}
-            {error && <div className="error-box">⚠️ {error}</div>}
+            {/* Success */}
+            {success && (
+              <div style={{
+                background: "#F0FFF4", border: `0.5px solid ${C.green}33`,
+                borderRadius: 10, padding: "10px 14px",
+                fontSize: 13, color: C.green, marginBottom: 12,
+              }}>
+                {success}
+              </div>
+            )}
 
-            {/* Success message (shown after signup) */}
-            {success && <div className="success-box">{success}</div>}
-
-            {/* Submit button */}
+            {/* Submit */}
             <button
               onClick={handleSubmit}
               disabled={loading}
               style={{
-                width:"100%", padding:"13px 0",
-                background:D.yellow, color:D.bg,
-                border:"none", borderRadius:10,
-                fontWeight:700, fontSize:13,
-                cursor:"pointer", fontFamily:"'Inter',sans-serif",
-                opacity:loading ? 0.6 : 1,
-                marginBottom:0,
-                transition:"opacity 0.15s",
+                width: "100%", padding: "15px 0",
+                background: C.accent, color: "#fff",
+                border: "none", borderRadius: 14,
+                fontWeight: 700, fontSize: 15,
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "'Inter', sans-serif",
+                opacity: loading ? 0.5 : 1,
+                transition: "opacity 0.15s",
+                letterSpacing: -0.2,
               }}
-              onMouseEnter={e => { if(!loading) e.currentTarget.style.opacity=".85"; }}
-              onMouseLeave={e => { if(!loading) e.currentTarget.style.opacity="1"; }}
             >
-              {loading
-                ? "Please wait…"
-                : mode === "login" ? "🚀 Log In"
-                : "🎉 Create Account"}
+              {loading ? "Please wait…" : mode === "login" ? "Log In" : "Create Account"}
             </button>
+          </div>
 
-            {/* Divider */}
-            <div className="divider">
-              <div className="divider-line" />
-              <span className="divider-text">or</span>
-              <div className="divider-line" />
-            </div>
+          {/* ── DIVIDER ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0" }}>
+            <div style={{ flex: 1, height: 0.5, background: C.sep }} />
+            <span style={{ fontSize: 12, color: C.textSub, fontWeight: 500 }}>or</span>
+            <div style={{ flex: 1, height: 0.5, background: C.sep }} />
+          </div>
 
-            {/* Demo login */}
+          {/* ── DEMO LOGIN ── */}
+          <div style={{ marginTop: 4, marginBottom: 24 }}>
             <button
               onClick={demoLogin}
               style={{
-                width:"100%", padding:"13px 0",
-                background:D.s2, color:D.t1,
-                border:`1px solid ${D.border2}`,
-                borderRadius:10, fontWeight:700,
-                fontSize:13, cursor:"pointer",
-                fontFamily:"'Inter',sans-serif",
-                marginBottom:16,
-                transition:"border-color 0.15s",
+                width: "100%", padding: "15px 0",
+                background: C.surface,
+                border: `0.5px solid ${C.sep}`,
+                borderRadius: 14,
+                fontWeight: 600, fontSize: 15,
+                color: C.text,
+                cursor: "pointer",
+                fontFamily: "'Inter', sans-serif",
+                transition: "border-color 0.15s",
               }}
-              onMouseEnter={e => e.currentTarget.style.borderColor=`${D.yellow}44`}
-              onMouseLeave={e => e.currentTarget.style.borderColor=D.border2}
+              onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
+              onMouseLeave={e => e.currentTarget.style.borderColor = C.sep}
             >
-              ⚡ Try Demo — No Account Needed
+              Try Demo — No Account Needed
             </button>
-
-            {/* Features */}
-            <div className="features-card">
-              <div className="features-title">What you get with FoodMood</div>
-              {[
-                "📷 AI food detection from photos",
-                "📊 Personalized calorie & macro goals",
-                "📍 Nearby restaurant discovery",
-                "🤖 AI-powered recommendations",
-                "🔥 Streak tracking & weekly reports",
-              ].map(f => (
-                <div key={f} className="feature-row">{f}</div>
-              ))}
-            </div>
-
-            {/* Back */}
-            <div className="back-link">
-              <span onClick={() => navigate("/")}>← Back to Home</span>
-            </div>
-
           </div>
+
+          {/* ── FEATURES LIST ── */}
+          <div style={{
+            background: C.surface,
+            borderRadius: 20,
+            padding: "16px 18px",
+            marginBottom: 24,
+          }}>
+            <div style={{
+              fontSize: 11, fontWeight: 600, color: C.textSub,
+              letterSpacing: "0.6px", textTransform: "uppercase", marginBottom: 12,
+            }}>
+              What you get
+            </div>
+            {[
+              { icon: "📷", label: "AI food detection from photos" },
+              { icon: "📊", label: "Personalised calorie and macro goals" },
+              { icon: "📍", label: "Nearby healthy restaurant discovery" },
+              { icon: "🤖", label: "AI-powered nutrition recommendations" },
+              { icon: "📈", label: "Streak tracking and weekly reports" },
+            ].map(f => (
+              <div key={f.label} className="feature-row">
+                <div className="feature-icon">{f.icon}</div>
+                <span>{f.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ── BACK ── */}
+          <div style={{ textAlign: "center" }}>
+            <span
+              className="tappable"
+              onClick={() => navigate("/")}
+              style={{ fontSize: 13, color: C.textSub, fontWeight: 500 }}
+            >
+              ← Back to Home
+            </span>
+          </div>
+
         </div>
       </div>
     </>
