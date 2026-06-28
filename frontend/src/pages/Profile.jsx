@@ -2,9 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 
-// ─────────────────────────────────────────────
-// COLOUR TOKENS — same as all other pages
-// ─────────────────────────────────────────────
 const C = {
   bg:       "#F2F2F7",
   surface:  "#FFFFFF",
@@ -19,9 +16,6 @@ const C = {
   amber:    "#FF9500",
 };
 
-// ─────────────────────────────────────────────
-// HELPERS — all unchanged
-// ─────────────────────────────────────────────
 function calculate_bmi(weight_kg, height_cm) {
   if (!height_cm) return { bmi: 0, category: "Unknown", color: C.textSub };
   const h   = height_cm / 100;
@@ -50,9 +44,6 @@ function goal_calories(tdee, goal) {
   return goal === "weight_loss" ? tdee - 500 : goal === "muscle_gain" ? tdee + 300 : tdee;
 }
 
-// ─────────────────────────────────────────────
-// OPTIONS — unchanged
-// ─────────────────────────────────────────────
 const ACTIVITY_OPTIONS = [
   "Sedentary (desk job, no exercise)",
   "Lightly Active (exercise 1-3 days/wk)",
@@ -67,14 +58,11 @@ const DIET_OPTIONS = [
 ];
 
 const GOAL_OPTIONS = [
-  { val: "maintenance", label: "Maintain",    icon: "ti-scale",        desc: "Eat at TDEE"  },
-  { val: "weight_loss", label: "Lose Fat",    icon: "ti-trending-down", desc: "TDEE − 500"   },
-  { val: "muscle_gain", label: "Build Muscle",icon: "ti-barbell",      desc: "TDEE + 300"   },
+  { val: "maintenance", label: "Maintain",     icon: "ti-scale",         desc: "Eat at TDEE" },
+  { val: "weight_loss", label: "Lose Fat",     icon: "ti-trending-down", desc: "TDEE − 500"  },
+  { val: "muscle_gain", label: "Build Muscle", icon: "ti-barbell",       desc: "TDEE + 300"  },
 ];
 
-// ─────────────────────────────────────────────
-// SECTION LABEL
-// ─────────────────────────────────────────────
 function SectionLabel({ children }) {
   return (
     <div style={{
@@ -87,9 +75,6 @@ function SectionLabel({ children }) {
   );
 }
 
-// ─────────────────────────────────────────────
-// STAT CELL
-// ─────────────────────────────────────────────
 function StatCell({ label, value, sub, color }) {
   return (
     <div style={{
@@ -106,9 +91,6 @@ function StatCell({ label, value, sub, color }) {
   );
 }
 
-// ─────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────
 export default function Profile() {
   const navigate = useNavigate();
 
@@ -131,14 +113,17 @@ export default function Profile() {
 
   useEffect(() => {
     async function loadProfile() {
+      // Load localStorage first as a fallback while API loads
       const local = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
       if (Object.keys(local).length > 0) setForm(f => ({ ...f, ...local }));
       try {
         const res = await api.get("/profile");
         if (res.data && Object.keys(res.data).length > 0) {
-          setForm(f => ({ ...f, ...res.data }));
+          // ✅ FIX: update localStorage first, then set form from API
+          // API data always wins over stale localStorage after logout/login
           const cur = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
           localStorage.setItem("foodmood_user", JSON.stringify({ ...cur, ...res.data }));
+          setForm(f => ({ ...f, ...res.data }));
         }
       } catch (e) {
         console.warn("Profile API failed:", e?.message);
@@ -173,7 +158,7 @@ export default function Profile() {
       activity_level: form.activity_level,
       goal:           form.goal,
       diet_type:      form.diet_type,
-      // ✅ FIX 1: convert array to string before sending
+      // ✅ FIX: convert array to string before sending
       allergies:      Array.isArray(form.allergies) ? form.allergies.join(", ") : (form.allergies || ""),
       calGoal, tdee, bmi,
     };
@@ -184,7 +169,7 @@ export default function Profile() {
       setSaved(true); setEditing(false);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      // ✅ FIX 2: show full error object instead of [object Object]
+      // ✅ FIX: show full error instead of [object Object]
       const msg = JSON.stringify(e?.response?.data) || e?.message || "Unknown error";
       setSaveError(`API error: ${msg}`);
       setSaved(true); setEditing(false);
@@ -306,14 +291,14 @@ export default function Profile() {
           {/* ── STATS ── */}
           <SectionLabel>Stats</SectionLabel>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <StatCell label="BMI"      value={bmi}      sub={bmiCat}                         color={bmiColor} />
-            <StatCell label="TDEE"     value={tdee}     sub="kcal/day"                       color={C.amber}  />
-            <StatCell label="Goal"     value={calGoal}  sub={form.goal.replace("_", " ")}    color={C.blue}   />
+            <StatCell label="BMI"   value={bmi}     sub={bmiCat}                      color={bmiColor} />
+            <StatCell label="TDEE"  value={tdee}    sub="kcal/day"                    color={C.amber}  />
+            <StatCell label="Goal"  value={calGoal} sub={form.goal.replace("_", " ")} color={C.blue}   />
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <StatCell label="Protein"  value={`${protein}g`} sub="daily"  color={C.blue}  />
-            <StatCell label="Carbs"    value={`${carbs}g`}   sub="daily"  color={C.green} />
-            <StatCell label="Fat"      value={`${fat}g`}     sub="daily"  color={C.red}   />
+            <StatCell label="Protein" value={`${protein}g`} sub="daily" color={C.blue}  />
+            <StatCell label="Carbs"   value={`${carbs}g`}   sub="daily" color={C.green} />
+            <StatCell label="Fat"     value={`${fat}g`}     sub="daily" color={C.red}   />
           </div>
 
           <div style={{
@@ -418,9 +403,7 @@ export default function Profile() {
             border: `0.5px solid ${C.sep}`,
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                BMI {bmi}
-              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>BMI {bmi}</span>
               <span style={{
                 fontSize: 12, fontWeight: 600, color: bmiColor,
                 background: `${bmiColor}18`, borderRadius: 7, padding: "2px 10px",
@@ -546,8 +529,7 @@ export default function Profile() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
               {allergyList.map(a => (
                 <span key={a} style={{
-                  background: "#FFF0F0",
-                  color: C.red,
+                  background: "#FFF0F0", color: C.red,
                   border: `0.5px solid ${C.red}33`,
                   borderRadius: 20, padding: "4px 12px",
                   fontSize: 12, fontWeight: 500,
@@ -627,10 +609,10 @@ export default function Profile() {
           <SectionLabel>Quick Actions</SectionLabel>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 24 }}>
             {[
-              { icon: "ti-home",     label: "Dashboard", to: "/dashboard" },
-              { icon: "ti-scan",     label: "Scanner",   to: "/scanner"   },
-              { icon: "ti-map-pin",  label: "Places",    to: "/places"    },
-              { icon: "ti-logout",   label: "Log Out",   to: "/login", logout: true },
+              { icon: "ti-home",    label: "Dashboard", to: "/dashboard" },
+              { icon: "ti-scan",    label: "Scanner",   to: "/scanner"   },
+              { icon: "ti-map-pin", label: "Places",    to: "/places"    },
+              { icon: "ti-logout",  label: "Log Out",   to: "/login", logout: true },
             ].map(a => (
               <button
                 key={a.to}
