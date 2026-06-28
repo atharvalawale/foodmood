@@ -107,7 +107,7 @@ function StatCell({ label, value, sub, color }) {
 }
 
 // ─────────────────────────────────────────────
-// MAIN COMPONENT — all logic unchanged
+// MAIN COMPONENT
 // ─────────────────────────────────────────────
 export default function Profile() {
   const navigate = useNavigate();
@@ -124,13 +124,11 @@ export default function Profile() {
     goal: "maintenance", diet_type: "No restriction", allergies: "",
   });
 
-  // Safety net — unchanged
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 3000);
     return () => clearTimeout(t);
   }, []);
 
-  // Load profile — unchanged
   useEffect(() => {
     async function loadProfile() {
       const local = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
@@ -164,7 +162,6 @@ export default function Profile() {
     ? form.allergies.filter(Boolean)
     : (form.allergies || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
 
-  // saveProfile — unchanged
   async function saveProfile() {
     setSaveError("");
     const profile = {
@@ -176,7 +173,8 @@ export default function Profile() {
       activity_level: form.activity_level,
       goal:           form.goal,
       diet_type:      form.diet_type,
-      allergies:      form.allergies,
+      // ✅ FIX 1: convert array to string before sending
+      allergies:      Array.isArray(form.allergies) ? form.allergies.join(", ") : (form.allergies || ""),
       calGoal, tdee, bmi,
     };
     const existing = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
@@ -186,14 +184,14 @@ export default function Profile() {
       setSaved(true); setEditing(false);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      const msg = e?.response?.data?.detail || e?.response?.data?.error || e?.message || "Unknown error";
+      // ✅ FIX 2: show full error object instead of [object Object]
+      const msg = JSON.stringify(e?.response?.data) || e?.message || "Unknown error";
       setSaveError(`API error: ${msg}`);
       setSaved(true); setEditing(false);
       setTimeout(() => { setSaved(false); setSaveError(""); }, 5000);
     }
   }
 
-  // ── Shared input style ──
   const inputSt = {
     width: "100%", background: C.surface2,
     border: `0.5px solid ${C.sep}`,
@@ -283,7 +281,6 @@ export default function Profile() {
             </button>
           </div>
 
-          {/* Avatar + name */}
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{
               width: 52, height: 52, borderRadius: "50%",
@@ -319,7 +316,6 @@ export default function Profile() {
             <StatCell label="Fat"      value={`${fat}g`}     sub="daily"  color={C.red}   />
           </div>
 
-          {/* Calorie target banner */}
           <div style={{
             background: C.surface, border: `0.5px solid ${C.sep}`,
             borderRadius: 14, padding: "12px 16px",
@@ -416,7 +412,6 @@ export default function Profile() {
             ))}
           </div>
 
-          {/* BMI bar */}
           <div style={{
             background: C.surface, borderRadius: 14,
             padding: "14px 16px", marginBottom: 4,
@@ -604,7 +599,6 @@ export default function Profile() {
             </button>
           )}
 
-          {/* Success */}
           {saved && !saveError && (
             <div style={{
               background: "#F0FFF4", border: `0.5px solid ${C.green}33`,
@@ -616,7 +610,6 @@ export default function Profile() {
             </div>
           )}
 
-          {/* Error */}
           {saveError && (
             <div style={{
               background: "#FFF0F0", border: `0.5px solid ${C.red}33`,
