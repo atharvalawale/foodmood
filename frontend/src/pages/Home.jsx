@@ -1,624 +1,802 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-// ─── Same tokens as Dashboard ─────────────────────────────────────────────────
-const D = {
-  yellow:"#FFD60A", yellowDim:"rgba(255,214,10,0.12)", yellowText:"#B8960A",
-  bg:"#0F0F0F", s1:"#181818", s2:"#222222", s3:"#2A2A2A",
-  border:"rgba(255,255,255,0.07)", border2:"rgba(255,255,255,0.12)",
-  green:"#00C97A", greenDim:"rgba(0,201,122,0.12)",
-  coral:"#FF5A5A", coralDim:"rgba(255,90,90,0.12)",
-  blue:"#4D9EFF",  blueDim:"rgba(77,158,255,0.12)",
-  amber:"#FFAB00", amberDim:"rgba(255,171,0,0.12)",
-  purple:"#9B7FFF",
-  t1:"#F0F0F0", t2:"#888888", t3:"#444444",
+// ─────────────────────────────────────────────
+// COLOUR TOKENS — same as all other pages
+// ─────────────────────────────────────────────
+const C = {
+  bg:       "#F2F2F7",
+  surface:  "#FFFFFF",
+  surface2: "#F2F2F7",
+  text:     "#1C1C1E",
+  textSub:  "#8E8E93",
+  sep:      "#E5E5EA",
+  accent:   "#1C1C1E",
+  green:    "#30D158",
+  blue:     "#007AFF",
+  red:      "#FF3B30",
+  amber:    "#FF9500",
 };
 
 export default function Home() {
   const navigate = useNavigate();
 
+  // Scroll progress + fade-up observer — same logic as original
+  useEffect(() => {
+    const onScroll = () => {
+      const total = document.body.scrollHeight - window.innerHeight;
+      const p     = (window.scrollY / total) * 100;
+      const el    = document.getElementById("scrollProgress");
+      if (el) el.style.width = p + "%";
+    };
+    window.addEventListener("scroll", onScroll);
+
+    const obs = new IntersectionObserver(
+      entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("visible"); }),
+      { threshold: 0.08 }
+    );
+    document.querySelectorAll(".fade-up").forEach(el => obs.observe(el));
+
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-
-        *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
-        html,body { background:${D.bg}; color:${D.t1}; }
-
-        .home {
-          font-family:'Inter',sans-serif;
-          background:${D.bg};
-          min-height:100vh;
-          font-size:13px;
-          color:${D.t1};
-        }
-
-        ::-webkit-scrollbar { display:none; }
-
-        @keyframes shimmer { 0%,100%{opacity:.3} 50%{opacity:.6} }
-        @keyframes up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
-        @keyframes scanLine { 0%{top:10%} 100%{top:90%} }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
-
-        .card {
-          background:${D.s1};
-          border:1px solid ${D.border};
-          border-radius:12px;
-        }
-        .tag {
-          display:inline-flex; align-items:center;
-          padding:3px 10px; border-radius:99px;
-          font-size:10px; font-weight:600;
-          font-family:'DM Mono',monospace;
-          background:${D.yellowDim};
-          color:${D.yellow};
-          border:1px solid rgba(255,214,10,0.2);
-          margin-bottom:12px;
-        }
-        .row { display:flex; align-items:center; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { background: ${C.bg}; font-family: 'Inter', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+        ::-webkit-scrollbar { display: none; }
 
         /* ── SCROLL PROGRESS ── */
-        .scroll-progress {
-          position:fixed; top:0; left:0; height:2px;
-          background:${D.yellow}; z-index:300;
-          transition:width 0.1s;
+        #scrollProgress {
+          position: fixed; top: 0; left: 0; height: 2px;
+          background: ${C.accent}; z-index: 300; transition: width 0.1s; width: 0%;
         }
 
         /* ── NAV ── */
         .nav {
-          position:fixed; top:0; left:0; right:0; z-index:200;
-          display:flex; align-items:center; justify-content:space-between;
-          padding:12px 16px;
-          background:rgba(15,15,15,0.92);
-          backdrop-filter:blur(12px);
-          border-bottom:1px solid ${D.border};
+          position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 14px 24px;
+          background: rgba(255,255,255,0.88);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-bottom: 0.5px solid ${C.sep};
         }
-        .logo {
-          display:flex; align-items:center; gap:8px;
-          font-family:'Inter',sans-serif; font-size:15px; font-weight:700; color:${D.t1};
+        .nav-logo {
+          display: flex; align-items: center; gap: 8px;
+          font-size: 16px; font-weight: 700; color: ${C.text}; letter-spacing: -0.3px;
         }
-        .logo-icon {
-          width:30px; height:30px; background:${D.yellow};
-          border-radius:8px; display:flex; align-items:center;
-          justify-content:center; font-size:16px;
+        .nav-logo-mark {
+          width: 30px; height: 30px; background: ${C.accent};
+          border-radius: 8px; display: flex; align-items: center;
+          justify-content: center;
+          font-size: 10px; font-weight: 700; color: #fff; letter-spacing: 0.3px;
         }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-link {
+          font-size: 13px; font-weight: 500; color: ${C.textSub};
+          text-decoration: none; cursor: pointer; transition: color 0.15s;
+          background: none; border: none; font-family: 'Inter', sans-serif;
+        }
+        .nav-link:hover { color: ${C.text}; }
         .nav-cta {
-          background:${D.yellow}; color:${D.bg};
-          border:none; padding:7px 16px; border-radius:99px;
-          font-size:11px; font-weight:700; cursor:pointer;
-          font-family:'Inter',sans-serif; transition:opacity 0.15s;
+          background: ${C.accent}; color: #fff;
+          border: none; padding: 8px 18px; border-radius: 20px;
+          font-size: 13px; font-weight: 600; cursor: pointer;
+          font-family: 'Inter', sans-serif; transition: opacity 0.15s;
+          letter-spacing: -0.1px;
         }
-        .nav-cta:hover { opacity:.85; }
+        .nav-cta:hover { opacity: 0.85; }
+        @media (max-width: 600px) { .nav-links { display: none; } }
 
         /* ── HERO ── */
         .hero {
-          min-height:100vh;
-          background:${D.bg};
-          display:flex; align-items:center;
-          padding:100px 16px 80px;
-          position:relative; overflow:hidden;
-          border-bottom:1px solid ${D.border};
+          min-height: 100vh;
+          background: ${C.surface};
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 120px 24px 80px;
+          text-align: center;
+          border-bottom: 0.5px solid ${C.sep};
+          position: relative; overflow: hidden;
         }
         .hero::before {
-          content:''; position:absolute; top:-120px; right:-120px;
-          width:480px; height:480px;
-          background:${D.yellowDim};
-          border-radius:50%; pointer-events:none;
+          content: ''; position: absolute;
+          width: 600px; height: 600px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(0,122,255,0.04) 0%, transparent 70%);
+          top: -100px; right: -100px; pointer-events: none;
         }
         .hero::after {
-          content:''; position:absolute; bottom:-150px; left:-60px;
-          width:320px; height:320px;
-          background:rgba(77,158,255,0.05);
-          border-radius:50%; pointer-events:none;
+          content: ''; position: absolute;
+          width: 400px; height: 400px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(48,209,88,0.04) 0%, transparent 70%);
+          bottom: -80px; left: -60px; pointer-events: none;
         }
-        .hero-content { max-width:520px; z-index:1; animation:fadeUp 0.6s both; }
+        .hero-eyebrow {
+          display: inline-flex; align-items: center; gap: 6px;
+          background: ${C.bg}; border: 0.5px solid ${C.sep};
+          border-radius: 20px; padding: 5px 14px;
+          font-size: 12px; font-weight: 600; color: ${C.textSub};
+          letter-spacing: 0.2px; margin-bottom: 24px;
+        }
+        .hero-eyebrow-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: ${C.green}; animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .hero h1 {
-          font-size:clamp(32px,7vw,58px);
-          font-weight:700; line-height:1.05;
-          letter-spacing:-1px;
-          color:${D.t1};
-          margin-bottom:16px;
+          font-size: clamp(34px, 6vw, 64px);
+          font-weight: 700; line-height: 1.05;
+          letter-spacing: -1.5px; color: ${C.text};
+          margin-bottom: 20px; max-width: 700px;
         }
-        .hero h1 span { color:${D.yellow}; font-style:italic; }
-        .hero p {
-          font-size:15px; color:${D.t2};
-          line-height:1.6; margin-bottom:28px; max-width:420px;
+        .hero h1 em {
+          font-style: normal;
+          background: linear-gradient(135deg, ${C.blue} 0%, ${C.green} 100%);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
-        .hero-btns { display:flex; gap:10px; flex-wrap:wrap; }
+        .hero-sub {
+          font-size: 17px; color: ${C.textSub};
+          line-height: 1.65; margin-bottom: 36px;
+          max-width: 500px; font-weight: 400;
+        }
+        .hero-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 56px; }
         .btn-primary {
-          background:${D.yellow}; color:${D.bg};
-          padding:11px 22px; border-radius:99px; border:none;
-          font-size:12px; font-weight:700; cursor:pointer;
-          font-family:'Inter',sans-serif; transition:opacity 0.15s;
+          background: ${C.accent}; color: #fff;
+          padding: 14px 28px; border-radius: 14px; border: none;
+          font-size: 15px; font-weight: 700; cursor: pointer;
+          font-family: 'Inter', sans-serif; transition: opacity 0.15s;
+          letter-spacing: -0.2px;
         }
-        .btn-primary:hover { opacity:.85; }
+        .btn-primary:hover { opacity: 0.85; }
         .btn-secondary {
-          background:transparent; color:${D.t1};
-          padding:11px 22px; border-radius:99px;
-          border:1px solid ${D.border2};
-          font-size:12px; font-weight:600; cursor:pointer;
-          font-family:'Inter',sans-serif; transition:border-color 0.15s;
+          background: ${C.surface}; color: ${C.text};
+          padding: 14px 28px; border-radius: 14px;
+          border: 0.5px solid ${C.sep};
+          font-size: 15px; font-weight: 600; cursor: pointer;
+          font-family: 'Inter', sans-serif; transition: border-color 0.15s;
         }
-        .btn-secondary:hover { border-color:${D.yellow}44; }
+        .btn-secondary:hover { border-color: ${C.accent}; }
 
-        /* ── PHONE MOCKUPS ── */
-        .hero-phones {
-          position:absolute; right:32px; bottom:0;
-          display:flex; gap:16px; align-items:flex-end; z-index:1;
+        /* ── HERO APP PREVIEW ── */
+        .hero-preview {
+          display: grid; grid-template-columns: 1fr 1fr 1fr;
+          gap: 12px; max-width: 680px; width: 100%; z-index: 1;
         }
-        .phone {
-          width:190px; background:${D.s1};
-          border-radius:28px; overflow:hidden;
-          box-shadow:0 20px 60px rgba(0,0,0,0.6);
-          border:1px solid ${D.border2};
-          animation:float 4s ease-in-out infinite;
+        .preview-card {
+          background: ${C.bg}; border: 0.5px solid ${C.sep};
+          border-radius: 20px; padding: 16px; text-align: left;
         }
-        .phone.tall { transform:translateY(-40px); animation-delay:0.5s; }
-        .phone-screen { padding:12px; min-height:360px; }
-        .phone-notch {
-          width:52px; height:16px;
-          background:${D.s3}; border-radius:0 0 9px 9px;
-          margin:0 auto 10px;
+        .preview-card-label {
+          font-size: 10px; font-weight: 600; color: ${C.textSub};
+          letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 10px;
         }
-
-        /* home screen */
-        .screen-home { background:${D.s1}; }
-        .ph-greeting { font-size:9px; color:${D.t2}; margin-bottom:2px; }
-        .ph-name { font-size:13px; font-weight:700; color:${D.t1}; margin-bottom:8px; }
-        .ph-food-card {
-          background:${D.yellow}; border-radius:12px;
-          padding:10px; margin-bottom:8px; position:relative; overflow:hidden;
+        .preview-cal {
+          font-size: 28px; font-weight: 700; color: ${C.text};
+          letter-spacing: -1px; line-height: 1;
         }
-        .ph-food-card h3 { font-size:10px; font-weight:700; margin-bottom:2px; color:${D.bg}; }
-        .ph-food-card p  { font-size:8px; color:rgba(0,0,0,0.55); margin-bottom:6px; }
-        .ph-food-card .emoji { position:absolute; right:6px; top:6px; font-size:30px; }
-        .ph-food-card .btn-sm {
-          background:${D.bg}; color:${D.t1};
-          border:none; padding:4px 10px; border-radius:99px;
-          font-size:8px; font-weight:700; cursor:pointer;
+        .preview-cal-sub { font-size: 11px; color: ${C.textSub}; margin-top: 3px; }
+        .preview-score {
+          font-size: 36px; font-weight: 700; color: ${C.green};
+          letter-spacing: -1px; line-height: 1;
         }
-        .ph-meal-lbl { font-size:9px; font-weight:700; color:${D.t1}; margin-bottom:5px; }
-        .ph-meal-item {
-          display:flex; align-items:center; gap:6px;
-          padding:6px; background:${D.s2};
-          border-radius:8px; margin-bottom:4px;
-          border:1px solid ${D.border};
+        .preview-score-sub { font-size: 11px; color: ${C.textSub}; margin-top: 3px; }
+        .preview-ai-text {
+          font-size: 12px; color: ${C.text}; line-height: 1.5;
+          font-weight: 400;
         }
-        .ph-meal-img {
-          width:24px; height:24px; border-radius:6px;
-          background:${D.yellowDim}; display:flex;
-          align-items:center; justify-content:center; font-size:13px;
+        .preview-ai-tag {
+          display: inline-block; background: ${C.accent};
+          color: #fff; font-size: 10px; font-weight: 600;
+          padding: 2px 8px; border-radius: 6px; margin-bottom: 8px;
         }
-        .ph-meal-name { font-size:9px; font-weight:600; color:${D.t1}; }
-        .ph-meal-cal  { font-size:8px; color:${D.t2}; }
-        .ph-meal-score { font-size:8px; font-weight:700; color:${D.green}; margin-left:auto; }
-
-        /* scan screen */
-        .screen-scan { background:${D.bg}; }
-        .scan-title { color:${D.t1}; font-size:11px; font-weight:700; margin-bottom:8px; }
-        .scan-box {
-          aspect-ratio:1; background:${D.s2};
-          border:1px dashed ${D.border2};
-          border-radius:12px; display:flex; align-items:center;
-          justify-content:center; margin-bottom:8px;
-          position:relative; overflow:hidden;
+        .mini-bar-wrap { margin-top: 8px; }
+        .mini-bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+        .mini-bar-lbl { font-size: 10px; color: ${C.textSub}; width: 44px; }
+        .mini-bar-bg { flex: 1; height: 3px; background: ${C.sep}; border-radius: 99px; overflow: hidden; }
+        .mini-bar-fg { height: 100%; border-radius: 99px; }
+        @media (max-width: 560px) {
+          .hero-preview { grid-template-columns: 1fr 1fr; }
+          .hero-preview .preview-card:last-child { display: none; }
         }
-        .scan-emoji { font-size:40px; }
-        .scan-line {
-          position:absolute; left:0; right:0; height:2px;
-          background:${D.yellow}; animation:scanLine 2s ease-in-out infinite;
-        }
-        .scan-tabs { display:flex; gap:4px; justify-content:center; }
-        .scan-tab {
-          background:${D.s2}; color:${D.t2};
-          border:1px solid ${D.border};
-          padding:4px 8px; border-radius:99px;
-          font-size:8px; font-weight:600; cursor:pointer;
-        }
-        .scan-tab.active { background:${D.yellow}; color:${D.bg}; border-color:${D.yellow}; }
-
-        @media(max-width:768px){ .hero-phones{display:none;} }
 
         /* ── STATS BAR ── */
         .stats-bar {
-          background:${D.s1};
-          border-bottom:1px solid ${D.border};
-          padding:20px 16px;
-          display:flex; justify-content:space-around; flex-wrap:wrap; gap:16px;
+          background: ${C.surface};
+          border-bottom: 0.5px solid ${C.sep};
+          padding: 24px;
+          display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px;
         }
-        .stat-item { text-align:center; }
+        .stat-item { text-align: center; }
         .stat-number {
-          font-size:26px; font-weight:700;
-          color:${D.yellow};
-          font-family:'DM Mono',monospace;
-          letter-spacing:-0.5px;
+          font-size: 28px; font-weight: 700; color: ${C.text};
+          letter-spacing: -1px; line-height: 1;
         }
-        .stat-label { font-size:10px; color:${D.t2}; margin-top:3px; }
+        .stat-label { font-size: 12px; color: ${C.textSub}; margin-top: 4px; font-weight: 400; }
 
         /* ── SECTIONS ── */
-        section { padding:48px 16px; }
-
+        section { padding: 64px 24px; max-width: 900px; margin: 0 auto; }
+        .section-eyebrow {
+          font-size: 11px; font-weight: 600; color: ${C.textSub};
+          letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 10px;
+        }
         .section-title {
-          font-size:clamp(22px,4vw,36px);
-          font-weight:700; line-height:1.1;
-          letter-spacing:-0.5px;
-          color:${D.t1}; margin-bottom:10px;
+          font-size: clamp(24px, 4vw, 40px); font-weight: 700;
+          line-height: 1.1; letter-spacing: -0.8px;
+          color: ${C.text}; margin-bottom: 12px;
         }
         .section-sub {
-          font-size:13px; color:${D.t2};
-          line-height:1.6; max-width:480px; margin-bottom:28px;
+          font-size: 15px; color: ${C.textSub};
+          line-height: 1.65; max-width: 480px; margin-bottom: 36px;
         }
 
-        /* ── FEATURES ── */
-        .features { background:${D.bg}; border-top:1px solid ${D.border}; }
-        .features-grid {
-          display:grid;
-          grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-          gap:10px;
+        /* ── PLATFORM PILLARS ── */
+        .pillars-section { background: ${C.surface}; border-top: 0.5px solid ${C.sep}; border-bottom: 0.5px solid ${C.sep}; }
+        .pillars-inner { max-width: 900px; margin: 0 auto; padding: 64px 24px; }
+        .pillars-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+        .pillar-card {
+          background: ${C.bg}; border: 0.5px solid ${C.sep};
+          border-radius: 20px; padding: 24px;
+          transition: border-color 0.15s, transform 0.15s;
         }
-        .feature-card {
-          background:${D.s1}; border:1px solid ${D.border};
-          border-radius:12px; padding:20px;
-          transition:border-color 0.15s;
-          animation:up 0.4s both;
+        .pillar-card:hover { border-color: ${C.accent}; transform: translateY(-2px); }
+        .pillar-icon {
+          width: 44px; height: 44px; border-radius: 12px;
+          display: flex; align-items: center; justify-content: center;
+          margin-bottom: 14px;
         }
-        .feature-card:hover { border-color:${D.yellow}44; }
-        .feature-icon {
-          width:40px; height:40px; border-radius:10px;
-          display:flex; align-items:center;
-          justify-content:center; font-size:20px; margin-bottom:12px;
+        .pillar-card h3 { font-size: 15px; font-weight: 700; color: ${C.text}; margin-bottom: 6px; letter-spacing: -0.2px; }
+        .pillar-card p  { font-size: 13px; color: ${C.textSub}; line-height: 1.6; }
+        .pillar-tag {
+          display: inline-block; margin-top: 12px;
+          font-size: 11px; font-weight: 600; color: ${C.textSub};
+          background: ${C.surface}; border: 0.5px solid ${C.sep};
+          border-radius: 6px; padding: 2px 8px;
         }
-        .feature-card h3 { font-size:13px; font-weight:700; color:${D.t1}; margin-bottom:6px; }
-        .feature-card p  { font-size:11px; color:${D.t2}; line-height:1.6; }
 
         /* ── HOW IT WORKS ── */
-        .how { background:${D.s1}; border-top:1px solid ${D.border}; border-bottom:1px solid ${D.border}; }
-        .steps { display:flex; flex-direction:column; gap:20px; max-width:520px; }
-        .step  { display:flex; gap:14px; align-items:flex-start; }
+        .how-section { background: ${C.bg}; }
+        .how-inner { max-width: 900px; margin: 0 auto; padding: 64px 24px; }
+        .how-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+        @media (max-width: 640px) { .how-grid { grid-template-columns: 1fr; } }
+        .steps { display: flex; flex-direction: column; gap: 0; }
+        .step {
+          display: flex; gap: 16px; align-items: flex-start;
+          padding: 20px 0; border-bottom: 0.5px solid ${C.sep};
+        }
+        .step:last-child { border-bottom: none; }
         .step-num {
-          width:32px; height:32px; background:${D.yellowDim};
-          border:1px solid ${D.yellow}44;
-          border-radius:9px; display:flex;
-          align-items:center; justify-content:center;
-          font-family:'DM Mono',monospace; font-size:13px;
-          font-weight:700; color:${D.yellow}; flex-shrink:0;
+          width: 32px; height: 32px; flex-shrink: 0;
+          border-radius: 10px; background: ${C.surface};
+          border: 0.5px solid ${C.sep};
+          display: flex; align-items: center; justify-content: center;
+          font-size: 13px; font-weight: 700; color: ${C.text};
         }
-        .step h3 { font-size:12px; font-weight:700; color:${D.t1}; margin-bottom:3px; }
-        .step p  { font-size:11px; color:${D.t2}; line-height:1.5; }
+        .step h3 { font-size: 14px; font-weight: 700; color: ${C.text}; margin-bottom: 4px; }
+        .step p  { font-size: 13px; color: ${C.textSub}; line-height: 1.55; }
 
-        /* tracker demo */
-        .tracker-demo {
-          background:${D.s1}; border:1px solid ${D.border};
-          border-radius:12px; padding:20px; max-width:380px;
+        /* nutrition demo card */
+        .nutrition-demo {
+          background: ${C.surface}; border: 0.5px solid ${C.sep};
+          border-radius: 20px; padding: 22px;
         }
-        .tracker-header {
-          display:flex; justify-content:space-between;
-          align-items:center; margin-bottom:16px;
+        .demo-header {
+          display: flex; justify-content: space-between;
+          align-items: baseline; margin-bottom: 18px;
         }
-        .tracker-header-title { font-size:12px; font-weight:700; color:${D.t1}; }
-        .tracker-header-date  { font-size:10px; color:${D.t2}; font-family:'DM Mono',monospace; }
-        .calorie-ring {
-          width:120px; height:120px; border-radius:50%;
-          background:conic-gradient(${D.yellow} 0% 72%, ${D.s3} 72% 100%);
-          display:flex; align-items:center; justify-content:center;
-          margin:0 auto 16px; position:relative;
+        .demo-title { font-size: 15px; font-weight: 700; color: ${C.text}; }
+        .demo-date  { font-size: 12px; color: ${C.textSub}; }
+        .demo-ring-wrap { display: flex; align-items: center; gap: 20px; margin-bottom: 18px; }
+        .demo-ring {
+          width: 90px; height: 90px; border-radius: 50%; flex-shrink: 0;
+          position: relative;
+          background: conic-gradient(${C.accent} 0% 73%, ${C.bg} 73% 100%);
+          display: flex; align-items: center; justify-content: center;
         }
-        .calorie-ring::before {
-          content:''; position:absolute;
-          width:86px; height:86px;
-          background:${D.s1}; border-radius:50%;
+        .demo-ring::before {
+          content: ''; position: absolute;
+          width: 64px; height: 64px; border-radius: 50%;
+          background: ${C.surface};
         }
-        .calorie-inner { position:relative; z-index:1; text-align:center; }
-        .calorie-num {
-          font-family:'DM Mono',monospace; font-size:20px;
-          font-weight:700; color:${D.t1};
+        .demo-ring-inner { position: relative; z-index: 1; text-align: center; }
+        .demo-ring-num { font-size: 16px; font-weight: 700; color: ${C.text}; letter-spacing: -0.5px; }
+        .demo-ring-lbl { font-size: 9px; color: ${C.textSub}; }
+        .demo-ring-info { flex: 1; }
+        .demo-ring-cal { font-size: 22px; font-weight: 700; color: ${C.text}; letter-spacing: -0.5px; line-height: 1; }
+        .demo-ring-sub { font-size: 12px; color: ${C.textSub}; margin-top: 3px; margin-bottom: 10px; }
+        .demo-remaining {
+          display: inline-block; background: "#F0FFF4";
+          background: rgba(48,209,88,0.1); color: ${C.green};
+          font-size: 12px; font-weight: 600; border-radius: 7px; padding: 3px 10px;
         }
-        .calorie-lbl { font-size:9px; color:${D.t2}; }
-        .macro-bars { display:flex; flex-direction:column; gap:8px; }
-        .macro-bar-row { display:flex; align-items:center; gap:8px; }
-        .macro-bar-lbl { font-size:10px; font-weight:600; color:${D.t1}; width:48px; }
-        .macro-bar-track {
-          flex:1; height:5px; background:${D.s3};
-          border-radius:99px; overflow:hidden;
-        }
-        .macro-bar-fill { height:100%; border-radius:99px; transition:width 1s; }
-        .macro-bar-val {
-          font-size:9px; color:${D.t2};
-          font-family:'DM Mono',monospace; width:56px; text-align:right;
-        }
+        .demo-bars { display: flex; flex-direction: column; gap: 10px; }
+        .demo-bar-row { display: flex; align-items: center; gap: 10px; }
+        .demo-bar-lbl { font-size: 12px; font-weight: 500; color: ${C.text}; width: 52px; }
+        .demo-bar-bg  { flex: 1; height: 6px; background: ${C.bg}; border-radius: 99px; overflow: hidden; }
+        .demo-bar-fg  { height: 100%; border-radius: 99px; transition: width 1s; }
+        .demo-bar-val { font-size: 11px; color: ${C.textSub}; width: 64px; text-align: right; }
 
-        /* ── CATEGORIES ── */
-        .categories { background:${D.bg}; border-top:1px solid ${D.border}; }
-        .categories-scroll {
-          display:flex; gap:10px;
-          overflow-x:auto; padding-bottom:8px; scrollbar-width:none;
+        /* ── COMPETITOR COMPARISON ── */
+        .compare-section { background: ${C.surface}; border-top: 0.5px solid ${C.sep}; border-bottom: 0.5px solid ${C.sep}; }
+        .compare-inner { max-width: 900px; margin: 0 auto; padding: 64px 24px; }
+        .compare-table {
+          width: 100%; border-collapse: collapse; margin-top: 8px;
+          border: 0.5px solid ${C.sep}; border-radius: 16px; overflow: hidden;
         }
-        .categories-scroll::-webkit-scrollbar { display:none; }
-        .cat-card {
-          flex-shrink:0; width:130px;
-          border-radius:12px; overflow:hidden;
-          background:${D.s1}; border:1px solid ${D.border};
-          cursor:pointer; transition:border-color 0.15s;
+        .compare-table th {
+          background: ${C.bg}; padding: 12px 16px;
+          font-size: 12px; font-weight: 600; color: ${C.textSub};
+          text-align: left; border-bottom: 0.5px solid ${C.sep};
+          letter-spacing: 0.3px;
         }
-        .cat-card:hover { border-color:${D.yellow}44; }
-        .cat-img {
-          height:90px; display:flex; align-items:center;
-          justify-content:center; font-size:44px;
-          background:${D.s2};
+        .compare-table th.highlight { background: ${C.text}; color: #fff; text-align: center; }
+        .compare-table td {
+          padding: 13px 16px; font-size: 13px; color: ${C.text};
+          border-bottom: 0.5px solid ${C.sep};
         }
-        .cat-name { font-size:11px; font-weight:700; color:${D.t1}; padding:8px 10px 3px; }
-        .cat-count { font-size:9px; color:${D.t2}; padding:0 10px 8px; font-family:'DM Mono',monospace; }
+        .compare-table td.center { text-align: center; }
+        .compare-table td.highlight-col { background: rgba(0,0,0,0.02); text-align: center; }
+        .compare-table tr:last-child td { border-bottom: none; }
+        .check { color: ${C.green}; font-weight: 700; font-size: 15px; }
+        .cross { color: ${C.sep};   font-size: 15px; }
+        .partial { color: ${C.amber}; font-size: 12px; font-weight: 600; }
+        @media (max-width: 560px) { .compare-table { font-size: 11px; } .compare-table td, .compare-table th { padding: 10px 10px; } }
+
+        /* ── FUTURE ROADMAP ── */
+        .roadmap-section { background: ${C.bg}; }
+        .roadmap-inner { max-width: 900px; margin: 0 auto; padding: 64px 24px; }
+        .roadmap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+        .roadmap-card {
+          background: ${C.surface}; border: 0.5px solid ${C.sep};
+          border-radius: 16px; padding: 18px;
+        }
+        .roadmap-phase {
+          font-size: 10px; font-weight: 700; color: ${C.textSub};
+          letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px;
+        }
+        .roadmap-card h4 { font-size: 14px; font-weight: 700; color: ${C.text}; margin-bottom: 6px; }
+        .roadmap-card p  { font-size: 12px; color: ${C.textSub}; line-height: 1.5; }
+        .roadmap-status {
+          display: inline-block; margin-top: 10px;
+          font-size: 11px; font-weight: 600; padding: 3px 10px;
+          border-radius: 6px;
+        }
+        .status-live    { background: rgba(48,209,88,0.1);  color: ${C.green}; }
+        .status-soon    { background: rgba(0,122,255,0.1);  color: ${C.blue};  }
+        .status-planned { background: rgba(142,142,147,0.1);color: ${C.textSub}; }
 
         /* ── CTA ── */
-        .cta {
-          background:${D.yellowDim};
-          border:1px solid ${D.yellow}22;
-          border-radius:12px;
-          margin:0 16px 48px;
-          padding:36px 20px;
-          text-align:center;
+        .cta-section { background: ${C.surface}; border-top: 0.5px solid ${C.sep}; }
+        .cta-inner {
+          max-width: 600px; margin: 0 auto; padding: 80px 24px;
+          text-align: center;
         }
-        .cta h2 { font-size:clamp(20px,4vw,32px); font-weight:700; color:${D.t1}; margin-bottom:10px; letter-spacing:-0.5px; }
-        .cta p  { font-size:13px; color:${D.t2}; margin-bottom:24px; }
-        .cta-btns { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+        .cta-inner h2 {
+          font-size: clamp(26px, 5vw, 44px); font-weight: 700;
+          letter-spacing: -1px; color: ${C.text}; margin-bottom: 14px; line-height: 1.1;
+        }
+        .cta-inner p { font-size: 16px; color: ${C.textSub}; margin-bottom: 32px; line-height: 1.6; }
+        .cta-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
         /* ── FOOTER ── */
-        footer {
-          background:${D.s1};
-          border-top:1px solid ${D.border};
-          color:${D.t2}; padding:28px 16px;
-          display:flex; justify-content:space-between;
-          flex-wrap:wrap; gap:16px;
+        .footer {
+          background: ${C.bg}; border-top: 0.5px solid ${C.sep};
+          padding: 32px 24px;
+          display: flex; justify-content: space-between;
+          flex-wrap: wrap; gap: 16px; align-items: center;
         }
-        .footer-logo { color:${D.t1}; font-size:14px; font-weight:700; margin-bottom:4px; }
-        .footer-links { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
-        .footer-links a {
-          color:${D.t2}; text-decoration:none;
-          font-size:11px; transition:color 0.15s;
+        .footer-logo { font-size: 14px; font-weight: 700; color: ${C.text}; display: flex; align-items: center; gap: 7px; }
+        .footer-logo-mark {
+          width: 24px; height: 24px; background: ${C.accent}; border-radius: 6px;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 8px; font-weight: 700; color: #fff;
         }
-        .footer-links a:hover { color:${D.yellow}; }
-        .footer-copy { font-size:10px; font-family:'DM Mono',monospace; }
+        .footer-links { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+        .footer-link {
+          font-size: 12px; color: ${C.textSub}; text-decoration: none;
+          transition: color 0.15s; font-weight: 400;
+        }
+        .footer-link:hover { color: ${C.text}; }
+        .footer-copy { font-size: 11px; color: ${C.textSub}; }
 
-        /* fade-up for scroll animation */
-        .fade-up { opacity:0; transform:translateY(20px); transition:opacity 0.5s,transform 0.5s; }
-        .fade-up.visible { opacity:1; transform:translateY(0); }
+        /* ── ANIMATION ── */
+        .fade-up { opacity: 0; transform: translateY(20px); transition: opacity 0.55s ease, transform 0.55s ease; }
+        .fade-up.visible { opacity: 1; transform: translateY(0); }
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
       `}</style>
 
-      <div className="scroll-progress" id="scrollProgress" />
+      {/* Scroll progress */}
+      <div id="scrollProgress" />
 
       {/* ── NAV ── */}
       <nav className="nav">
-        <div className="logo">
-          <div className="logo-icon">🍱</div>
+        <div className="nav-logo">
+          <div className="nav-logo-mark">FM</div>
           FoodMood
         </div>
-        <button className="nav-cta" onClick={() => navigate("/login")}>Get Started Free</button>
+        <div className="nav-links">
+          <button className="nav-link" onClick={() => document.getElementById("platform")?.scrollIntoView({ behavior: "smooth" })}>Platform</button>
+          <button className="nav-link" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })}>How it works</button>
+          <button className="nav-link" onClick={() => document.getElementById("roadmap")?.scrollIntoView({ behavior: "smooth" })}>Roadmap</button>
+        </div>
+        <button className="nav-cta" onClick={() => navigate("/login")}>Get Started</button>
       </nav>
 
-      <div className="home">
-
-        {/* ── HERO ── */}
-        <section className="hero">
-          <div className="hero-content">
-            <div className="tag">🤖 AI-Powered Nutrition</div>
-            <h1>Your Personal <span>Nutrition</span> Coach</h1>
-            <p>Track meals with AI, scan products, discover healthy restaurants, and order food — all in one app with guaranteed macro accuracy.</p>
-            <div className="hero-btns">
-              <button className="btn-primary" onClick={() => navigate("/login")}>
-                🚀 Get Started Free →
-              </button>
-              <button className="btn-secondary" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior:"smooth" })}>
-                See Features
-              </button>
-            </div>
-          </div>
-
-          <div className="hero-phones">
-            <div className="phone">
-              <div className="phone-screen screen-home">
-                <div className="phone-notch" />
-                <div className="ph-greeting">Good morning!</div>
-                <div className="ph-name">Atharva 👋</div>
-                <div className="ph-food-card">
-                  <h3>Healthy Food<br/>ready for you</h3>
-                  <p>Track with AI · Order fresh</p>
-                  <button className="btn-sm">Shop Now</button>
-                  <div className="emoji">🥗</div>
-                </div>
-                <div className="ph-meal-lbl">Today's Meals</div>
-                <div className="ph-meal-item">
-                  <div className="ph-meal-img">🍳</div>
-                  <div>
-                    <div className="ph-meal-name">Oats + Eggs</div>
-                    <div className="ph-meal-cal">420 kcal</div>
-                  </div>
-                  <div className="ph-meal-score">92/100</div>
-                </div>
-                <div className="ph-meal-item">
-                  <div className="ph-meal-img">🍛</div>
-                  <div>
-                    <div className="ph-meal-name">Dal Rice</div>
-                    <div className="ph-meal-cal">580 kcal</div>
-                  </div>
-                  <div className="ph-meal-score">78/100</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="phone tall">
-              <div className="phone-screen screen-scan">
-                <div className="phone-notch" />
-                <div className="scan-title">🔍 AI Scanner</div>
-                <div className="scan-box">
-                  <div className="scan-emoji">🍜</div>
-                  <div className="scan-line" />
-                </div>
-                <div className="scan-tabs">
-                  <div className="scan-tab active">Photo</div>
-                  <div className="scan-tab">Barcode</div>
-                  <div className="scan-tab">Voice</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── STATS ── */}
-        <div className="stats-bar">
-          {[
-            { num:"300K+", label:"Foods in Database" },
-            { num:"5",     label:"Input Methods"     },
-            { num:"100%",  label:"Macro Accuracy"    },
-            { num:"AI",    label:"Powered Engine"    },
-          ].map(s => (
-            <div key={s.label} className="stat-item">
-              <div className="stat-number">{s.num}</div>
-              <div className="stat-label">{s.label}</div>
-            </div>
-          ))}
+      {/* ── HERO ── */}
+      <section className="hero">
+        <div className="hero-eyebrow">
+          <div className="hero-eyebrow-dot" />
+          AI Nutrition Platform · Built for India
         </div>
 
-        {/* ── FEATURES ── */}
-        <section className="features fade-up" id="features">
-          <div className="tag">✨ Features</div>
-          <h2 className="section-title">Everything you need<br/>to eat better</h2>
-          <p className="section-sub">From tracking to ordering, FoodMood handles your complete nutrition journey with AI precision.</p>
-          <div className="features-grid">
-            {[
-              { icon:"📷", bg:D.yellowDim,  title:"AI Photo Detection",    desc:"Take a photo of any meal and our AI instantly identifies every food item, estimates portions, and calculates exact macros." },
-              { icon:"📦", bg:D.blueDim,    title:"Smart Barcode Scanner", desc:"Scan any product barcode and get instant nutrition info, health warnings, and allergen alerts." },
-              { icon:"📍", bg:D.greenDim,   title:"Restaurant Discovery",  desc:"Find nearby restaurants with full menu nutrition data. Order food and have it automatically logged." },
-              { icon:"🎯", bg:D.coralDim,   title:"Personalized Goals",    desc:"Set weight loss, muscle gain, or maintenance goals. Get personalized calorie targets based on your BMI and TDEE." },
-              { icon:"✅", bg:"rgba(155,127,255,0.12)", title:"Verified Meals", desc:"Our verified meal system ensures macro accuracy from restaurant partners. Every meal gets a confidence score." },
-              { icon:"🤖", bg:D.amberDim,   title:"AI Recommendations",   desc:"Get personalized nutrition advice based on your daily intake, goals, and eating patterns." },
-            ].map((f, i) => (
-              <div key={f.title} className="feature-card" style={{ animationDelay:`${i*0.06}s` }}>
-                <div className="feature-icon" style={{ background:f.bg }}>{f.icon}</div>
-                <h3>{f.title}</h3>
-                <p>{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        <h1>
+          Not a calorie tracker.<br />
+          An <em>AI nutrition</em> platform.
+        </h1>
 
-        {/* ── HOW IT WORKS ── */}
-        <section className="how fade-up">
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))", gap:40, alignItems:"center" }}>
-            <div>
-              <div className="tag">🚀 How it works</div>
-              <h2 className="section-title">Simple steps to<br/>better nutrition</h2>
-              <div className="steps">
-                {[
-                  { n:1, title:"Create your profile",  desc:"Enter age, weight, height and goals. We calculate your BMI and daily calorie needs automatically." },
-                  { n:2, title:"Log your meals",        desc:"Take a photo, type text, scan barcode, record voice, or upload video. AI handles the rest." },
-                  { n:3, title:"Get AI insights",       desc:"See your health score, macro breakdown, and personalized AI recommendations every day." },
-                  { n:4, title:"Order healthy food",    desc:"Discover nearby restaurants, view nutrition-verified menus, and order food that fits your goals." },
-                ].map(s => (
-                  <div key={s.n} className="step">
-                    <div className="step-num">{s.n}</div>
-                    <div>
-                      <h3>{s.title}</h3>
-                      <p>{s.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <p className="hero-sub">
+          FoodMood understands what you eat, why it matters, and what to do next.
+          Photo detection, barcode scanning, verified restaurant menus, and personalised meal plans — all in one place.
+        </p>
 
-            <div className="tracker-demo">
-              <div className="tracker-header">
-                <div className="tracker-header-title">Today's Nutrition</div>
-                <div className="tracker-header-date">Apr 26, 2026</div>
-              </div>
-              <div className="calorie-ring">
-                <div className="calorie-inner">
-                  <div className="calorie-num">1,472</div>
-                  <div className="calorie-lbl">of 2,000 kcal</div>
-                </div>
-              </div>
-              <div className="macro-bars">
-                {[
-                  { label:"Protein", pct:68, color:D.blue,   val:"68g / 100g"  },
-                  { label:"Carbs",   pct:55, color:D.green,  val:"138g / 250g" },
-                  { label:"Fat",     pct:42, color:D.amber,  val:"27g / 65g"   },
-                  { label:"Fiber",   pct:80, color:D.purple, val:"20g / 25g"   },
-                ].map(m => (
-                  <div key={m.label} className="macro-bar-row">
-                    <div className="macro-bar-lbl">{m.label}</div>
-                    <div className="macro-bar-track">
-                      <div className="macro-bar-fill" style={{ width:`${m.pct}%`, background:m.color }} />
-                    </div>
-                    <div className="macro-bar-val">{m.val}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── CATEGORIES ── */}
-        <section className="categories fade-up">
-          <div className="tag">🍽️ Food Categories</div>
-          <h2 className="section-title">Explore all<br/>food categories</h2>
-          <p className="section-sub">From Indian classics to international cuisine — we track nutrition for every food worldwide.</p>
-          <div className="categories-scroll">
-            {[
-              { emoji:"🍛", name:"Indian",      count:"500+ dishes" },
-              { emoji:"🍔", name:"Fast Food",   count:"200+ items"  },
-              { emoji:"🥗", name:"Healthy",     count:"300+ recipes"},
-              { emoji:"🍣", name:"Japanese",    count:"150+ dishes" },
-              { emoji:"🍝", name:"Italian",     count:"180+ items"  },
-              { emoji:"🥙", name:"Middle East", count:"120+ dishes" },
-              { emoji:"🍜", name:"Chinese",     count:"250+ items"  },
-              { emoji:"🥩", name:"BBQ & Grill", count:"90+ dishes"  },
-            ].map(c => (
-              <div key={c.name} className="cat-card">
-                <div className="cat-img">{c.emoji}</div>
-                <div className="cat-name">{c.name}</div>
-                <div className="cat-count">{c.count}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ── CTA ── */}
-        <div className="cta fade-up">
-          <h2>Start eating smarter today</h2>
-          <p>Join thousands of users who transformed their nutrition with FoodMood's AI-powered tracking.</p>
-          <div className="cta-btns">
-            <button className="btn-primary" onClick={() => navigate("/login")}>🚀 Get Started Free</button>
-            <button className="btn-secondary" onClick={() => navigate("/login")}>Try Web App</button>
-          </div>
+        <div className="hero-btns">
+          <button className="btn-primary" onClick={() => navigate("/login")}>
+            Start for free
+          </button>
+          <button className="btn-secondary" onClick={() => document.getElementById("platform")?.scrollIntoView({ behavior: "smooth" })}>
+            See how it works
+          </button>
         </div>
 
-        {/* ── FOOTER ── */}
-        <footer>
-          <div>
-            <div className="footer-logo">🍱 FoodMood</div>
-            <div style={{ fontSize:11 }}>AI-Powered Nutrition Assistant</div>
+        {/* App preview cards */}
+        <div className="hero-preview">
+          <div className="preview-card">
+            <div className="preview-card-label">Today</div>
+            <div className="preview-cal">1,420</div>
+            <div className="preview-cal-sub">of 1,920 kcal</div>
+            <div className="mini-bar-wrap">
+              {[
+                { lbl: "Protein", pct: 66, color: C.blue  },
+                { lbl: "Carbs",   pct: 76, color: C.green },
+                { lbl: "Fat",     pct: 63, color: C.amber },
+              ].map(b => (
+                <div key={b.lbl} className="mini-bar-row">
+                  <div className="mini-bar-lbl">{b.lbl}</div>
+                  <div className="mini-bar-bg">
+                    <div className="mini-bar-fg" style={{ width: `${b.pct}%`, background: b.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="footer-links">
-            {["Features","How it works","Privacy","Terms","Contact"].map(l => (
-              <a key={l} href="#">{l}</a>
-            ))}
-          </div>
-          <div className="footer-copy">© 2026 FoodMood. All rights reserved.</div>
-        </footer>
 
+          <div className="preview-card">
+            <div className="preview-card-label">Health Score</div>
+            <div className="preview-score">78</div>
+            <div className="preview-score-sub">out of 100 · Healthy</div>
+            <div style={{ marginTop: 12, height: 4, background: C.sep, borderRadius: 99, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: "78%", background: C.green, borderRadius: 99 }} />
+            </div>
+            <div style={{ fontSize: 11, color: C.textSub, marginTop: 8 }}>+22 Protein · −8 Sugar</div>
+          </div>
+
+          <div className="preview-card">
+            <div className="preview-ai-tag">AI Coach</div>
+            <div className="preview-ai-text">
+              You're 48g short on protein. A grilled chicken dinner will close the gap.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── STATS ── */}
+      <div className="stats-bar fade-up">
+        {[
+          { num: "1,700+",  label: "Indian foods in database" },
+          { num: "5",       label: "Ways to log a meal"       },
+          { num: "4-layer", label: "Nutrition engine"         },
+          { num: "AI",      label: "Powered personalisation"  },
+        ].map(s => (
+          <div key={s.label} className="stat-item">
+            <div className="stat-number">{s.num}</div>
+            <div className="stat-label">{s.label}</div>
+          </div>
+        ))}
       </div>
 
-      <script dangerouslySetInnerHTML={{ __html:`
-        window.addEventListener('scroll', () => {
-          const total = document.body.scrollHeight - window.innerHeight;
-          const p = (window.scrollY / total) * 100;
-          const el = document.getElementById('scrollProgress');
-          if(el) el.style.width = p + '%';
-        });
-        const obs = new IntersectionObserver((entries) => {
-          entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
-        }, { threshold:0.1 });
-        document.querySelectorAll('.fade-up').forEach(el => obs.observe(el));
-      `}} />
+      {/* ── PLATFORM PILLARS ── */}
+      <div className="pillars-section" id="platform">
+        <div className="pillars-inner fade-up">
+          <div className="section-eyebrow">The Platform</div>
+          <h2 className="section-title">
+            Four layers that work<br />together for you
+          </h2>
+          <p className="section-sub">
+            FoodMood is not a single feature. It is a complete nutrition intelligence platform — from understanding what you eat to automating what you should eat next.
+          </p>
+
+          <div className="pillars-grid">
+            {[
+              {
+                icon: "ti-brain",
+                bg: "rgba(0,122,255,0.08)",
+                iconColor: C.blue,
+                phase: "Layer 1",
+                title: "AI Food Intelligence",
+                desc: "Photo detection, text parsing, barcode scanning, and voice input. FoodMood identifies any food and calculates exact macros — including 1,700+ Indian dishes.",
+                tag: "Live now",
+                tagClass: "status-live",
+              },
+              {
+                icon: "ti-chart-bar",
+                bg: "rgba(48,209,88,0.08)",
+                iconColor: C.green,
+                phase: "Layer 2",
+                title: "Personalised Tracking",
+                desc: "TDEE-based calorie targets, macro goals, health scores, and daily AI recommendations — all adjusted to your body, goal, and activity level.",
+                tag: "Live now",
+                tagClass: "status-live",
+              },
+              {
+                icon: "ti-map-pin",
+                bg: "rgba(255,149,0,0.08)",
+                iconColor: C.amber,
+                phase: "Layer 3",
+                title: "Healthy Food Discovery",
+                desc: "Find nearby restaurants with full nutrition data on every menu item. Filter by calories, protein, diet type, or allergy. Order and auto-log in one tap.",
+                tag: "Live now",
+                tagClass: "status-live",
+              },
+              {
+                icon: "ti-refresh",
+                bg: "rgba(142,142,147,0.08)",
+                iconColor: C.textSub,
+                phase: "Layer 4",
+                title: "Subscription Meal Plans",
+                desc: "Like Calo — but built for India. Auto-generated weekly plans from verified providers, adjusted daily to your macro targets. Pause, swap, or skip anytime.",
+                tag: "Coming soon",
+                tagClass: "status-soon",
+              },
+              {
+                icon: "ti-shield-check",
+                bg: "rgba(0,122,255,0.08)",
+                iconColor: C.blue,
+                phase: "Layer 5",
+                title: "Verified Meals System",
+                desc: "Restaurants submit structured recipes. FoodMood calculates macros automatically and awards verification badges — unverified → calculated → verified → premium.",
+                tag: "Coming soon",
+                tagClass: "status-soon",
+              },
+              {
+                icon: "ti-robot",
+                bg: "rgba(48,209,88,0.08)",
+                iconColor: C.green,
+                phase: "Layer 6",
+                title: "Autonomous Nutrition",
+                desc: "The long-term vision: FoodMood learns your preferences, schedule, and progress — and automatically plans, orders, and adjusts your nutrition without you having to think about it.",
+                tag: "Planned",
+                tagClass: "status-planned",
+              },
+            ].map((p, i) => (
+              <div key={p.title} className="pillar-card fade-up" style={{ animationDelay: `${i * 0.07}s` }}>
+                <div className="pillar-icon" style={{ background: p.bg }}>
+                  <i className={`ti ${p.icon}`} style={{ fontSize: 20, color: p.iconColor }} aria-hidden="true" />
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: C.textSub, letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 6 }}>
+                  {p.phase}
+                </div>
+                <h3>{p.title}</h3>
+                <p>{p.desc}</p>
+                <div className={`roadmap-status ${p.tagClass}`}>{p.tag}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── HOW IT WORKS ── */}
+      <div className="how-section" id="how">
+        <div className="how-inner fade-up">
+          <div className="section-eyebrow">How it works</div>
+          <h2 className="section-title">Simple to start.<br />Powerful over time.</h2>
+
+          <div className="how-grid">
+            <div className="steps">
+              {[
+                {
+                  n: "1",
+                  title: "Tell us about yourself",
+                  desc: "Age, weight, height, goal — we calculate your BMI, TDEE, and personalised calorie and macro targets in seconds.",
+                },
+                {
+                  n: "2",
+                  title: "Log food any way you want",
+                  desc: "Photo, text, barcode, voice, or manual search across 1,700+ Indian and international foods. AI handles identification and portion estimation.",
+                },
+                {
+                  n: "3",
+                  title: "Get your health score",
+                  desc: "Every meal and every day gets a 0–100 score based on protein, fiber, sugar, and sodium. Like Yuka — but for your full diet, not just one product.",
+                },
+                {
+                  n: "4",
+                  title: "Discover and order healthy food",
+                  desc: "Find nearby restaurants with full macro data on every dish. Order food that actually fits your goal — not just food that looks healthy.",
+                },
+              ].map(s => (
+                <div key={s.n} className="step">
+                  <div className="step-num">{s.n}</div>
+                  <div>
+                    <h3>{s.title}</h3>
+                    <p>{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Live nutrition demo */}
+            <div className="nutrition-demo">
+              <div className="demo-header">
+                <div className="demo-title">Today's Nutrition</div>
+                <div className="demo-date">Sunday, 25 May</div>
+              </div>
+              <div className="demo-ring-wrap">
+                <div className="demo-ring">
+                  <div className="demo-ring-inner">
+                    <div className="demo-ring-num">73%</div>
+                    <div className="demo-ring-lbl">of goal</div>
+                  </div>
+                </div>
+                <div className="demo-ring-info">
+                  <div className="demo-ring-cal">1,420</div>
+                  <div className="demo-ring-sub">of 1,920 kcal</div>
+                  <div className="demo-remaining">500 remaining</div>
+                </div>
+              </div>
+              <div className="demo-bars">
+                {[
+                  { label: "Protein", pct: 66, color: C.blue,  val: "92 / 140g" },
+                  { label: "Carbs",   pct: 76, color: C.green, val: "168 / 220g"},
+                  { label: "Fat",     pct: 63, color: C.amber, val: "38 / 60g"  },
+                  { label: "Fiber",   pct: 60, color: "#7C3AED",val: "18 / 30g" },
+                ].map(m => (
+                  <div key={m.label} className="demo-bar-row">
+                    <div className="demo-bar-lbl">{m.label}</div>
+                    <div className="demo-bar-bg">
+                      <div className="demo-bar-fg" style={{ width: `${m.pct}%`, background: m.color }} />
+                    </div>
+                    <div className="demo-bar-val">{m.val}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* AI tip */}
+              <div style={{
+                marginTop: 16, background: "#F0FFF4",
+                borderRadius: 12, padding: "12px 14px",
+                display: "flex", gap: 10, alignItems: "flex-start",
+              }}>
+                <i className="ti ti-bulb" style={{ fontSize: 16, color: C.green, flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+                <div style={{ fontSize: 12, color: "#0F6E56", lineHeight: 1.5 }}>
+                  You're 48g short on protein today. A grilled paneer or chicken dinner will close the gap.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── COMPETITOR COMPARISON ── */}
+      <div className="compare-section fade-up">
+        <div className="compare-inner">
+          <div className="section-eyebrow">Why FoodMood</div>
+          <h2 className="section-title">What no other app combines</h2>
+          <p className="section-sub" style={{ marginBottom: 24 }}>
+            MyFitnessPal tracks. Calo delivers. Yuka scans. FoodMood does all three — with AI personalisation built for India.
+          </p>
+
+          <div style={{ overflowX: "auto" }}>
+            <table className="compare-table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>MyFitnessPal</th>
+                  <th>Calo</th>
+                  <th>Yuka</th>
+                  <th className="highlight">FoodMood</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ["AI photo detection",          "✓", "✗", "✗", "✓"],
+                  ["Barcode + health score",       "✓", "✗", "✓", "✓"],
+                  ["Indian food database",         "Partial","✗","✗","✓"],
+                  ["Restaurant macro discovery",   "✗", "✓", "✗", "✓"],
+                  ["Subscription meal plans",      "✗", "✓", "✗", "Soon"],
+                  ["Verified meals system",        "✗", "✗", "✗", "Soon"],
+                  ["Personalised AI coaching",     "✗", "✗", "✗", "✓"],
+                  ["Built for India",              "✗", "✗", "✗", "✓"],
+                ].map(([feat, mfp, calo, yuka, fm]) => (
+                  <tr key={feat}>
+                    <td style={{ fontWeight: 500 }}>{feat}</td>
+                    <td className="center">{mfp === "✓" ? <span className="check">✓</span> : mfp === "✗" ? <span className="cross">—</span> : <span className="partial">{mfp}</span>}</td>
+                    <td className="center">{calo === "✓" ? <span className="check">✓</span> : calo === "✗" ? <span className="cross">—</span> : <span className="partial">{calo}</span>}</td>
+                    <td className="center">{yuka === "✓" ? <span className="check">✓</span> : yuka === "✗" ? <span className="cross">—</span> : <span className="partial">{yuka}</span>}</td>
+                    <td className="highlight-col">{fm === "✓" ? <span className="check">✓</span> : fm === "✗" ? <span className="cross">—</span> : <span className="partial">{fm}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ── ROADMAP ── */}
+      <div className="roadmap-section" id="roadmap">
+        <div className="roadmap-inner fade-up">
+          <div className="section-eyebrow">Roadmap</div>
+          <h2 className="section-title">Where FoodMood is going</h2>
+          <p className="section-sub">Built in phases — each one adding a new layer of intelligence on top of the last.</p>
+
+          <div className="roadmap-grid">
+            {[
+              { phase: "Phase 1 — Live",    title: "AI Tracking",             desc: "Photo, text, barcode, voice logging. 1,700+ Indian foods. TDEE-based goals. Health score.",  status: "Live now",    cls: "status-live"    },
+              { phase: "Phase 2 — Live",    title: "Personalisation",         desc: "Goal-based macros, allergy warnings, AI daily recommendations, streak tracking.",             status: "Live now",    cls: "status-live"    },
+              { phase: "Phase 3 — Live",    title: "Restaurant Discovery",    desc: "Find healthy restaurants, browse nutrition-tagged menus, order and auto-log.",                status: "Live now",    cls: "status-live"    },
+              { phase: "Phase 4 — Next",    title: "Supabase + Real Auth",    desc: "Persistent data, real authentication, order history, cross-device sync.",                    status: "In progress", cls: "status-soon"    },
+              { phase: "Phase 5 — Soon",    title: "Verified Meals",          desc: "Provider dashboard. Restaurants submit recipes. FoodMood calculates and badges macros.",      status: "Coming soon", cls: "status-soon"    },
+              { phase: "Phase 6 — Planned", title: "Subscription Meal Plans", desc: "Weekly plans from verified providers. Auto-adjusted daily. Pause, swap, skip anytime.",      status: "Planned",     cls: "status-planned" },
+              { phase: "Phase 7 — Future",  title: "Mobile App",              desc: "React Native (Expo). Native camera. Push notifications. Barcode scanner. Wearable sync.",    status: "Planned",     cls: "status-planned" },
+              { phase: "Phase 8 — Future",  title: "Scale for India",         desc: "Hindi/Marathi support. UPI payments. B2B corporate wellness. Regional food database.",       status: "Planned",     cls: "status-planned" },
+            ].map((r, i) => (
+              <div key={r.title} className="roadmap-card fade-up" style={{ animationDelay: `${i * 0.05}s` }}>
+                <div className="roadmap-phase">{r.phase}</div>
+                <h4>{r.title}</h4>
+                <p>{r.desc}</p>
+                <div className={`roadmap-status ${r.cls}`}>{r.status}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── CTA ── */}
+      <div className="cta-section">
+        <div className="cta-inner fade-up">
+          <h2>
+            Start eating with<br />intelligence.
+          </h2>
+          <p>
+            Join FoodMood and experience nutrition tracking built for how India actually eats — powered by AI, not guesswork.
+          </p>
+          <div className="cta-btns">
+            <button className="btn-primary" onClick={() => navigate("/login")}>
+              Get started free
+            </button>
+            <button className="btn-secondary" onClick={() => navigate("/login")}>
+              Try demo — no account needed
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── FOOTER ── */}
+      <footer className="footer">
+        <div className="footer-logo">
+          <div className="footer-logo-mark">FM</div>
+          FoodMood
+        </div>
+        <div className="footer-links">
+          {["Platform", "How it works", "Roadmap", "Privacy", "Terms", "Contact"].map(l => (
+            <a key={l} href="#" className="footer-link">{l}</a>
+          ))}
+        </div>
+        <div className="footer-copy">© 2026 FoodMood. AI Nutrition Platform.</div>
+      </footer>
     </>
   );
 }
