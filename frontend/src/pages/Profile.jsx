@@ -113,20 +113,23 @@ export default function Profile() {
 
   useEffect(() => {
     async function loadProfile() {
-      // Load localStorage first as a fallback while API loads
-      const local = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
-      if (Object.keys(local).length > 0) setForm(f => ({ ...f, ...local }));
       try {
         const res = await api.get("/profile");
         if (res.data && Object.keys(res.data).length > 0) {
-          // ✅ FIX: update localStorage first, then set form from API
-          // API data always wins over stale localStorage after logout/login
+          // ✅ API is single source of truth — never use localStorage for form
           const cur = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
           localStorage.setItem("foodmood_user", JSON.stringify({ ...cur, ...res.data }));
-          setForm(f => ({ ...f, ...res.data }));
+          setForm(res.data);
+        } else {
+          // API returned empty profile — fall back to localStorage
+          const local = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
+          if (Object.keys(local).length > 0) setForm(f => ({ ...f, ...local }));
         }
       } catch (e) {
         console.warn("Profile API failed:", e?.message);
+        // API completely failed — use localStorage as fallback
+        const local = JSON.parse(localStorage.getItem("foodmood_user") || "{}");
+        if (Object.keys(local).length > 0) setForm(f => ({ ...f, ...local }));
       } finally {
         setLoading(false);
       }
@@ -158,7 +161,6 @@ export default function Profile() {
       activity_level: form.activity_level,
       goal:           form.goal,
       diet_type:      form.diet_type,
-      // ✅ FIX: convert array to string before sending
       allergies:      Array.isArray(form.allergies) ? form.allergies.join(", ") : (form.allergies || ""),
       calGoal, tdee, bmi,
     };
@@ -169,7 +171,6 @@ export default function Profile() {
       setSaved(true); setEditing(false);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      // ✅ FIX: show full error instead of [object Object]
       const msg = JSON.stringify(e?.response?.data) || e?.message || "Unknown error";
       setSaveError(`API error: ${msg}`);
       setSaved(true); setEditing(false);
