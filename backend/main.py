@@ -596,7 +596,12 @@ def save_profile(
     global demo_profile
     profile_dict = profile.dict()
     if user_id:
-        return save_profile_db(user_id, profile_dict)
+        result = save_profile_db(user_id, profile_dict)
+        if result.get("error"):
+            # Previously this was returned as a normal 200 response, so the
+            # frontend had no way to know the save actually failed.
+            raise HTTPException(status_code=500, detail=result["error"])
+        return result
     else:
         demo_profile = profile_dict
         return {"message": "Profile saved! (demo mode)"}

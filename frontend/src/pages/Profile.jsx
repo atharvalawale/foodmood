@@ -173,8 +173,8 @@ export default function Profile() {
     } catch (e) {
       const msg = JSON.stringify(e?.response?.data) || e?.message || "Unknown error";
       setSaveError(`API error: ${msg}`);
-      setSaved(true); setEditing(false);
-      setTimeout(() => { setSaved(false); setSaveError(""); }, 5000);
+      setEditing(false);
+      setTimeout(() => setSaveError(""), 5000);
     }
   }
 
