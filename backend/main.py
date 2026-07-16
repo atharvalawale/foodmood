@@ -632,11 +632,12 @@ async def analyze_image(
 
         profile   = get_profile_db(user_id) if user_id else demo_profile
         goal      = profile.get("goal", "maintenance")
+        diet_type = profile.get("diet_type", "No restriction")
         allergies = profile.get("allergies", [])
         if isinstance(allergies, str):
             allergies = [a.strip() for a in allergies.split(",") if a.strip()]
 
-        warnings, modifier = apply_personalization(meal, goal=goal, allergies=allergies)
+        warnings, modifier = apply_personalization(meal, goal=goal, allergies=allergies, diet_type=diet_type)
         final_score = min(max(round(score + modifier, 1), 0), 100)
 
         return {
@@ -680,11 +681,12 @@ def analyze_text(
 
     profile   = get_profile_db(user_id) if user_id else demo_profile
     goal      = profile.get("goal", "maintenance")
+    diet_type = profile.get("diet_type", "No restriction")
     allergies = profile.get("allergies", [])
     if isinstance(allergies, str):
         allergies = [a.strip() for a in allergies.split(",") if a.strip()]
 
-    warnings, modifier = apply_personalization(meal, goal=goal, allergies=allergies)
+    warnings, modifier = apply_personalization(meal, goal=goal, allergies=allergies, diet_type=diet_type)
     final_score = min(max(round(score + modifier, 1), 0), 100)
 
     return {
@@ -709,7 +711,10 @@ def analyze_text(
 # VIDEO ANALYSIS
 # ─────────────────────────────────────────────────────────────────────────────
 @app.post("/analyze-video")
-async def analyze_video(file: UploadFile = File(...)):
+async def analyze_video(
+    file: UploadFile = File(...),
+    user_id: Optional[str] = Depends(get_user_id)
+):
     try:
         import cv2
     except ImportError:
@@ -750,6 +755,16 @@ async def analyze_video(file: UploadFile = File(...)):
         meal     = calculate_meal_totals(portions)
         score, category, _ = compute_meal_health_score(meal)
 
+        profile   = get_profile_db(user_id) if user_id else demo_profile
+        goal      = profile.get("goal", "maintenance")
+        diet_type = profile.get("diet_type", "No restriction")
+        allergies = profile.get("allergies", [])
+        if isinstance(allergies, str):
+            allergies = [a.strip() for a in allergies.split(",") if a.strip()]
+
+        warnings, modifier = apply_personalization(meal, goal=goal, allergies=allergies, diet_type=diet_type)
+        final_score = min(max(round(score + modifier, 1), 0), 100)
+
         return {
             "food_name":      "Video meal",
             "foods_detected": foods_all,
@@ -757,7 +772,9 @@ async def analyze_video(file: UploadFile = File(...)):
             "total_protein":  meal.get("total_protein",  0),
             "total_carbs":    meal.get("total_carbs",    0),
             "total_fat":      meal.get("total_fat",      0),
-            "health_score":   round(score, 1),
+            "health_score":   final_score,
+            "score_category": category,
+            "warnings":       warnings,
             "skipped_foods":  meal.get("skipped_foods", []),
         }
     finally:
