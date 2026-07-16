@@ -19,10 +19,14 @@ def save_profile_db(user_id: str, profile: dict):
             .eq("id", user_id) \
             .execute()
 
-        # Normalise allergies — always store as plain string
-        allergies = profile.get("allergies", "")
-        if isinstance(allergies, list):
-            allergies = ", ".join(allergies)
+        # The Supabase "allergies" column is an array type — it must be sent
+        # as a real list, not a joined string (a plain "" string caused
+        # Postgres error 22P02: malformed array literal).
+        allergies_in = profile.get("allergies", [])
+        if isinstance(allergies_in, str):
+            allergies = [a.strip() for a in allergies_in.split(",") if a.strip()]
+        else:
+            allergies = [a.strip() for a in allergies_in if a and str(a).strip()]
 
         data = {
             "name":           profile.get("name", ""),
@@ -82,7 +86,7 @@ def get_profile_db(user_id: str):
             "activity_level": row.get("activity_level", "Moderately Active (exercise 3-5 days)"),
             "goal":           row.get("goal", "maintenance"),
             "diet_type":      row.get("diet_type", "No restriction"),
-            "allergies":      row.get("allergies", ""),
+            "allergies":      row.get("allergies") or [],
             "calGoal":        int(row.get("calGoal") or 2000),
             "tdee":           int(row.get("tdee") or 2000),
             "bmi":            float(row.get("bmi") or 22.0),
