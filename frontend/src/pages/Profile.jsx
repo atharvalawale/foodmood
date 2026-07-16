@@ -610,10 +610,11 @@ export default function Profile() {
           <SectionLabel>Quick Actions</SectionLabel>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 24 }}>
             {[
-              { icon: "ti-home",    label: "Dashboard", to: "/dashboard" },
-              { icon: "ti-scan",    label: "Scanner",   to: "/scanner"   },
-              { icon: "ti-map-pin", label: "Places",    to: "/places"    },
-              { icon: "ti-logout",  label: "Log Out",   to: "/login", logout: true },
+              { icon: "ti-home",     label: "Dashboard", to: "/dashboard" },
+              { icon: "ti-scan",     label: "Scanner",   to: "/scanner"   },
+              { icon: "ti-map-pin",  label: "Places",    to: "/places"    },
+              { icon: "ti-building-store", label: "Provider Dashboard", to: "/provider" },
+              { icon: "ti-logout",   label: "Log Out",   to: "/login", logout: true },
             ].map(a => (
               <button
                 key={a.to}
