@@ -305,3 +305,136 @@ def update_streak_db(user_id: str):
     except Exception as e:
         print(f"❌ Streak update error: {e}")
         return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROVIDERS & MENU ITEMS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_or_create_provider_db(owner_id: str, name: str = "My Restaurant", cuisine: str = "indian"):
+    """
+    Each provider account has exactly one providers row, found by owner_id.
+    Creates one on first use.
+    """
+    try:
+        existing = supabase.table("providers") \
+            .select("*") \
+            .eq("owner_id", owner_id) \
+            .execute()
+
+        if existing.data:
+            return existing.data[0]
+
+        created = supabase.table("providers").insert({
+            "owner_id": owner_id,
+            "name":     name,
+            "cuisine":  cuisine,
+        }).execute()
+        return created.data[0]
+
+    except Exception as e:
+        print(f"❌ Provider get/create error: {e}")
+        return None
+
+
+def add_menu_item_db(provider_id: str, item: dict):
+    try:
+        data = {
+            "provider_id":   provider_id,
+            "name":          item.get("name", ""),
+            "description":   item.get("description", ""),
+            "price":         float(item.get("price", 0) or 0),
+            "calories":      float(item.get("calories", 0) or 0),
+            "protein":       float(item.get("protein", 0) or 0),
+            "carbs":         float(item.get("carbs", 0) or 0),
+            "fat":           float(item.get("fat", 0) or 0),
+            "fiber":         float(item.get("fiber", 0) or 0),
+            "sugar":         float(item.get("sugar", 0) or 0),
+            "sodium":        float(item.get("sodium", 0) or 0),
+            "serving_grams": float(item.get("serving_grams", 100) or 100),
+            "veg":           bool(item.get("veg", False)),
+            "tags":          item.get("tags", []) or [],
+            # New items always start unverified/self-reported — bumping to
+            # 'verified'/'premium' is a separate reviewer-only action.
+            "status":        "unverified",
+        }
+        result = supabase.table("menu_items").insert(data).execute()
+        return {"message": "Menu item added!", "data": result.data[0]}
+
+    except Exception as e:
+        print(f"❌ Menu item add error: {e}")
+        return {"message": "Menu item add failed", "error": str(e)}
+
+
+def update_menu_item_db(item_id: str, provider_id: str, updates: dict):
+    """
+    Providers can edit their own items' details, but never their own
+    verification status — that field is dropped here on purpose.
+    """
+    try:
+        updates = dict(updates)
+        updates.pop("status", None)
+        updates.pop("provider_id", None)
+
+        result = supabase.table("menu_items") \
+            .update(updates) \
+            .eq("id", item_id) \
+            .eq("provider_id", provider_id) \
+            .execute()
+
+        if not result.data:
+            return {"message": "Menu item not found or not yours", "error": "not_found"}
+        return {"message": "Menu item updated!", "data": result.data[0]}
+
+    except Exception as e:
+        print(f"❌ Menu item update error: {e}")
+        return {"message": "Menu item update failed", "error": str(e)}
+
+
+def delete_menu_item_db(item_id: str, provider_id: str):
+    try:
+        supabase.table("menu_items") \
+            .delete() \
+            .eq("id", item_id) \
+            .eq("provider_id", provider_id) \
+            .execute()
+        return {"message": "Menu item deleted!"}
+    except Exception as e:
+        print(f"❌ Menu item delete error: {e}")
+        return {"message": "Menu item delete failed", "error": str(e)}
+
+
+def get_provider_menu_db(provider_id: str):
+    try:
+        result = supabase.table("menu_items") \
+            .select("*") \
+            .eq("provider_id", provider_id) \
+            .order("created_at", desc=True) \
+            .execute()
+        return result.data or []
+    except Exception as e:
+        print(f"❌ Provider menu get error: {e}")
+        return []
+
+
+def browse_menu_items_db(status: str = None, tag: str = None, veg: bool = None):
+    """
+    Public browse endpoint backing — filter by verification tier,
+    a single diet tag, and/or vegetarian-only.
+    """
+    try:
+        query = supabase.table("menu_items").select("*")
+        if status:
+            query = query.eq("status", status)
+        if veg is not None:
+            query = query.eq("veg", veg)
+        result = query.order("created_at", desc=True).execute()
+        items = result.data or []
+
+        if tag:
+            items = [i for i in items if tag.lower() in [t.lower() for t in (i.get("tags") or [])]]
+
+        return items
+    except Exception as e:
+        print(f"❌ Menu browse error: {e}")
+        return []
