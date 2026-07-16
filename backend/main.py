@@ -40,6 +40,8 @@ from modules.db   import (
     clear_meals_today_db, get_meals_week_db,
     save_order_db, get_orders_db,
     get_streak_db, update_streak_db,
+    get_or_create_provider_db, add_menu_item_db, update_menu_item_db,
+    delete_menu_item_db, get_provider_menu_db, browse_menu_items_db,
 )
 
 # ── Load nutrition DB on startup ───────────────────────────────────────────────
@@ -140,6 +142,21 @@ class ProfileInput(BaseModel):
     calGoal:        int   = 2000
     tdee:           int   = 2000
     bmi:            float = 22.0
+
+class MenuItemInput(BaseModel):
+    name:          str
+    description:   str          = ""
+    price:         float        = 0
+    calories:      float
+    protein:       float        = 0
+    carbs:         float        = 0
+    fat:           float        = 0
+    fiber:         float        = 0
+    sugar:         float        = 0
+    sodium:        float        = 0
+    serving_grams: float        = 100
+    veg:           bool         = False
+    tags:          list[str]    = []
 
 class OrderInput(BaseModel):
     restaurant_id:    Optional[str] = None
@@ -611,6 +628,68 @@ def get_profile(user_id: Optional[str] = Depends(get_user_id)):
     if user_id:
         return get_profile_db(user_id)
     return demo_profile or {}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROVIDER MENU (backs ProviderDashboard.jsx)
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/provider/menu")
+def get_my_menu(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+    return get_provider_menu_db(provider["id"])
+
+
+@app.post("/provider/menu")
+def add_my_menu_item(item: MenuItemInput, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+
+    result = add_menu_item_db(provider["id"], item.dict())
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@app.put("/provider/menu/{item_id}")
+def update_my_menu_item(item_id: str, item: MenuItemInput, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+
+    result = update_menu_item_db(item_id, provider["id"], item.dict())
+    if result.get("error"):
+        status_code = 404 if result["error"] == "not_found" else 500
+        raise HTTPException(status_code=status_code, detail=result["message"])
+    return result
+
+
+@app.delete("/provider/menu/{item_id}")
+def delete_my_menu_item(item_id: str, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+
+    return delete_menu_item_db(item_id, provider["id"])
+
+
+@app.get("/menu/browse")
+def browse_menu(status: Optional[str] = None, tag: Optional[str] = None, veg: Optional[bool] = None):
+    """
+    Public — lets the app show 'healthy near me' / verified-only / diet-tag
+    filtered menu items across all providers.
+    """
+    return browse_menu_items_db(status=status, tag=tag, veg=veg)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

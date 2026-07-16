@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../api/client";
 
 const C = {
   bg:       "#F2F2F7",
@@ -23,13 +24,21 @@ const BADGES = {
   premium:    { label: "Premium",     color: C.green,   bg: "rgba(48,209,88,0.08)",   desc: "Lab-tested macros. Highest accuracy guarantee."  },
 };
 
-// ─── Demo menu items ──────────────────────────────────────────────────────────
-const DEMO_ITEMS = [
-  { id: 1, name: "Grilled Chicken Bowl",  kcal: 480, protein: 42, carbs: 38, fat: 8,  fiber: 6,  status: "premium",    veg: false, tags: ["high-protein", "gluten-free"] },
-  { id: 2, name: "Salmon Quinoa Plate",   kcal: 540, protein: 38, carbs: 52, fat: 16, fiber: 8,  status: "verified",   veg: false, tags: ["omega-3", "high-protein"]    },
-  { id: 3, name: "Veggie Buddha Bowl",    kcal: 420, protein: 18, carbs: 58, fat: 12, fiber: 12, status: "calculated", veg: true,  tags: ["vegan", "high-fiber"]        },
-  { id: 4, name: "Turkey Wrap",           kcal: 390, protein: 32, carbs: 34, fat: 10, fiber: 4,  status: "unverified", veg: false, tags: ["low-carb"]                   },
-];
+// ─── Maps a backend menu_items row -> the shape this UI already uses ─────────
+function mapFromBackend(row) {
+  return {
+    id:      row.id,
+    name:    row.name,
+    kcal:    row.calories,
+    protein: row.protein,
+    carbs:   row.carbs,
+    fat:     row.fat,
+    fiber:   row.fiber,
+    status:  row.status,
+    veg:     row.veg,
+    tags:    row.tags || [],
+  };
+}
 
 const DIET_TAGS = ["high-protein", "low-carb", "vegan", "vegetarian", "gluten-free", "dairy-free", "high-fiber", "keto", "omega-3"];
 
@@ -44,13 +53,29 @@ export default function ProviderDashboard() {
   const nav = useNavigate();
 
   const [tab,       setTab]      = useState("menu");
-  const [items,     setItems]    = useState(DEMO_ITEMS);
+  const [items,     setItems]    = useState([]);
+  const [loading,   setLoading]  = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
   const [showForm,  setShowForm] = useState(false);
   const [form,      setForm]     = useState(EMPTY_FORM);
   const [saving,    setSaving]   = useState(false);
   const [saved,     setSaved]    = useState(false);
   const [error,     setError]    = useState("");
   const [expanded,  setExpanded] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get("/provider/menu");
+        if (!cancelled) setItems((res.data || []).map(mapFromBackend));
+      } catch {
+        if (!cancelled) setError("Couldn't load your menu. Pull down to retry.");
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggleTag = tag => set("tags",
@@ -73,24 +98,42 @@ export default function ProviderDashboard() {
     if (!form.name.trim()) { setError("Meal name is required."); return; }
     if (!form.kcal)        { setError("Calories are required.");  return; }
     setError(""); setSaving(true);
-    await new Promise(r => setTimeout(r, 900)); // simulate API
-    const newItem = {
-      id:      items.length + 1,
-      name:    form.name.trim(),
-      kcal:    parseFloat(form.kcal)    || 0,
-      protein: parseFloat(form.protein) || 0,
-      carbs:   parseFloat(form.carbs)   || 0,
-      fat:     parseFloat(form.fat)     || 0,
-      fiber:   parseFloat(form.fiber)   || 0,
-      status:  "unverified",
-      veg:     form.veg,
-      tags:    form.tags,
-    };
-    setItems(prev => [newItem, ...prev]);
-    setSaving(false); setSaved(true);
-    setTimeout(() => {
-      setSaved(false); setShowForm(false); setForm(EMPTY_FORM);
-    }, 1800);
+    try {
+      const res = await api.post("/provider/menu", {
+        name:          form.name.trim(),
+        calories:      parseFloat(form.kcal)    || 0,
+        protein:       parseFloat(form.protein) || 0,
+        carbs:         parseFloat(form.carbs)   || 0,
+        fat:           parseFloat(form.fat)     || 0,
+        fiber:         parseFloat(form.fiber)   || 0,
+        sugar:         parseFloat(form.sugar)   || 0,
+        sodium:        parseFloat(form.sodium)  || 0,
+        serving_grams: parseFloat(form.serving_grams) || 100,
+        veg:           form.veg,
+        tags:          form.tags,
+      });
+      const newItem = mapFromBackend(res.data.data);
+      setItems(prev => [newItem, ...prev]);
+      setSaving(false); setSaved(true);
+      setTimeout(() => {
+        setSaved(false); setShowForm(false); setForm(EMPTY_FORM);
+      }, 1800);
+    } catch (e) {
+      setSaving(false);
+      setError(e?.response?.data?.detail || "Couldn't save this item. Try again.");
+    }
+  }
+
+  async function handleDelete(itemId) {
+    setDeletingId(itemId);
+    try {
+      await api.delete(`/provider/menu/${itemId}`);
+      setItems(prev => prev.filter(i => i.id !== itemId));
+      setExpanded(null);
+    } catch {
+      setError("Couldn't delete this item. Try again.");
+    }
+    setDeletingId(null);
   }
 
   const stats = {
@@ -401,6 +444,16 @@ export default function ProviderDashboard() {
             {/* Menu item list */}
             <div style={s.secLbl}>Your Menu</div>
             <div style={s.card}>
+              {loading && (
+                <div style={{ padding: "20px 0", textAlign: "center", fontSize: 13, color: C.textSub }}>
+                  Loading your menu…
+                </div>
+              )}
+              {!loading && items.length === 0 && (
+                <div style={{ padding: "20px 0", textAlign: "center", fontSize: 13, color: C.textSub }}>
+                  No menu items yet — add your first one above.
+                </div>
+              )}
               {items.map((item, i) => {
                 const badge   = BADGES[item.status];
                 const isOpen  = expanded === item.id;
@@ -493,7 +546,7 @@ export default function ProviderDashboard() {
 
                         {/* Tags */}
                         {item.tags.length > 0 && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
                             {item.tags.map(tag => (
                               <span key={tag} style={{
                                 fontSize: 11, color: C.textSub,
@@ -505,6 +558,20 @@ export default function ProviderDashboard() {
                             ))}
                           </div>
                         )}
+
+                        {/* Delete */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                          disabled={deletingId === item.id}
+                          style={{
+                            width: "100%", padding: "9px 0", borderRadius: 10,
+                            border: `0.5px solid ${C.red}55`, background: "transparent",
+                            color: C.red, fontSize: 12, fontWeight: 600,
+                            opacity: deletingId === item.id ? 0.5 : 1,
+                          }}
+                        >
+                          {deletingId === item.id ? "Removing…" : "Remove item"}
+                        </button>
                       </div>
                     )}
                   </div>
