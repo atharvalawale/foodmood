@@ -207,6 +207,7 @@ function SearchTab({ defaultSlot }) {
   const [logging,   setLogging]   = useState(false);
   const [logged,    setLogged]    = useState(false);
   const [error,     setError]     = useState("");
+  const [dietWarning, setDietWarning] = useState("");
 
   const searchTimer = useRef(null);
   const inputRef    = useRef(null);
@@ -286,8 +287,9 @@ function SearchTab({ defaultSlot }) {
   async function handleLog() {
     if (!nutrition) return;
     setLogging(true);
+    setDietWarning("");
     try {
-      await api.post("/log", {
+      const res = await api.post("/log", {
         food_name: selected.name,
         calories:  nutrition.calories, protein: nutrition.protein,
         carbs:     nutrition.carbs,    fat:     nutrition.fat,
@@ -297,6 +299,7 @@ function SearchTab({ defaultSlot }) {
         quantity:  parseFloat(quantity), unit,
         meal_type: mealType, meal_time: mealType,
       });
+      if (res.data.warnings) setDietWarning(res.data.warnings);
       setLogged(true);
       setTimeout(() => {
         setLogged(false); setSelected(null); setNutrition(null);
@@ -602,6 +605,16 @@ function SearchTab({ defaultSlot }) {
               fontSize: 13, color: C.red, marginBottom: 12,
             }}>
               {error}
+            </div>
+          )}
+
+          {dietWarning && (
+            <div style={{
+              background: "#FFF8E6", border: `0.5px solid ${C.amber}55`,
+              borderRadius: 12, padding: "10px 14px",
+              fontSize: 13, color: C.amber, marginBottom: 12,
+            }}>
+              {dietWarning}
             </div>
           )}
 

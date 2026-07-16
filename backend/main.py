@@ -860,17 +860,34 @@ def add_log(
     meal["logged_at"] = datetime.now().isoformat()
     meal["date"]      = str(date.today())
 
+    # ── Diet/allergy/goal check — runs no matter how the food was added ──────
+    profile   = get_profile_db(user_id) if user_id else demo_profile
+    goal      = profile.get("goal", "maintenance")
+    diet_type = profile.get("diet_type", "No restriction")
+    allergies = profile.get("allergies", [])
+    if isinstance(allergies, str):
+        allergies = [a.strip() for a in allergies.split(",") if a.strip()]
+
+    meal_for_check = {
+        "total_calories": meal.get("calories", 0),
+        "total_protein":  meal.get("protein",  0),
+        "total_sodium":   meal.get("sodium",   0),
+        "total_sugar":    meal.get("sugar",    0),
+        "items": [{"food": meal.get("food_name", ""), "ingredients": ""}],
+    }
+    warnings, _ = apply_personalization(meal_for_check, goal=goal, allergies=allergies, diet_type=diet_type)
+
     if user_id:
         print(f"💾 Saving meal to Supabase for user {user_id}")
         saved = add_meal_db(user_id, meal)
         update_streak_db(user_id)
-        return {"message": "Logged!", "meal": saved}
+        return {"message": "Logged!", "meal": saved, "warnings": warnings}
     else:
         print("💾 Saving meal to memory (demo mode)")
         meal["id"] = len(demo_log) + 1
         demo_log.append(meal)
         demo_streak = min(demo_streak + 1, 99)
-        return {"message": "Logged! (demo mode)", "meal": meal}
+        return {"message": "Logged! (demo mode)", "meal": meal, "warnings": warnings}
 
 
 @app.get("/daily-log")
