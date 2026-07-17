@@ -457,3 +457,193 @@ def set_menu_item_status_db(item_id: str, status: str):
     except Exception as e:
         print(f"❌ Menu status update error: {e}")
         return {"message": "Status update failed", "error": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUBSCRIPTION MEAL PLANS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_plan_db(provider_id: str, plan: dict):
+    try:
+        data = {
+            "provider_id":    provider_id,
+            "name":           plan.get("name", ""),
+            "description":    plan.get("description", ""),
+            "meals_per_week": int(plan.get("meals_per_week", 7) or 7),
+            "price_per_week": float(plan.get("price_per_week", 0) or 0),
+            "currency":       plan.get("currency", "INR"),
+            "target_goal":    plan.get("target_goal", "maintain"),
+            "diet_type":      plan.get("diet_type", "No restriction"),
+        }
+        result = supabase.table("subscription_plans").insert(data).execute()
+        return {"message": "Plan created!", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Plan create error: {e}")
+        return {"message": "Plan create failed", "error": str(e)}
+
+
+def get_provider_plans_db(provider_id: str):
+    try:
+        result = supabase.table("subscription_plans") \
+            .select("*") \
+            .eq("provider_id", provider_id) \
+            .order("created_at", desc=True) \
+            .execute()
+        return result.data or []
+    except Exception as e:
+        print(f"❌ Provider plans get error: {e}")
+        return []
+
+
+def add_plan_meal_db(plan_id: str, menu_item_id: str, day_number: int, meal_slot: str):
+    try:
+        data = {
+            "plan_id":      plan_id,
+            "menu_item_id": menu_item_id,
+            "day_number":   day_number,
+            "meal_slot":    meal_slot,
+        }
+        result = supabase.table("subscription_plan_meals").insert(data).execute()
+        return {"message": "Meal added to plan!", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Plan meal add error: {e}")
+        return {"message": "Plan meal add failed", "error": str(e)}
+
+
+def get_plan_meals_db(plan_id: str):
+    """
+    Returns the plan's weekly schedule with the actual menu_item nutrition
+    data joined in, not just the raw links.
+    """
+    try:
+        links = supabase.table("subscription_plan_meals") \
+            .select("*") \
+            .eq("plan_id", plan_id) \
+            .order("day_number") \
+            .execute().data or []
+
+        if not links:
+            return []
+
+        item_ids = list({l["menu_item_id"] for l in links})
+        items = supabase.table("menu_items").select("*").in_("id", item_ids).execute().data or []
+        items_by_id = {i["id"]: i for i in items}
+
+        return [
+            {**link, "menu_item": items_by_id.get(link["menu_item_id"])}
+            for link in links
+        ]
+    except Exception as e:
+        print(f"❌ Plan meals get error: {e}")
+        return []
+
+
+def browse_plans_db(target_goal: str = None, diet_type: str = None):
+    try:
+        query = supabase.table("subscription_plans").select("*").eq("is_active", True)
+        if target_goal:
+            query = query.eq("target_goal", target_goal)
+        if diet_type:
+            query = query.eq("diet_type", diet_type)
+        result = query.order("created_at", desc=True).execute()
+        return result.data or []
+    except Exception as e:
+        print(f"❌ Plan browse error: {e}")
+        return []
+
+
+def subscribe_to_plan_db(user_id: str, plan_id: str):
+    try:
+        # Cancel any existing active subscription first — one active plan at a time.
+        supabase.table("user_subscriptions") \
+            .update({"status": "cancelled"}) \
+            .eq("user_id", user_id) \
+            .eq("status", "active") \
+            .execute()
+
+        data = {"user_id": user_id, "plan_id": plan_id, "status": "active", "current_day_number": 1}
+        result = supabase.table("user_subscriptions").insert(data).execute()
+        return {"message": "Subscribed!", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Subscribe error: {e}")
+        return {"message": "Subscribe failed", "error": str(e)}
+
+
+def get_my_subscription_db(user_id: str):
+    """
+    Returns the user's active subscription plus today's scheduled meals
+    (today = current_day_number in the plan's weekly cycle).
+    """
+    try:
+        sub_result = supabase.table("user_subscriptions") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("status", "active") \
+            .execute()
+
+        if not sub_result.data:
+            return None
+
+        sub = sub_result.data[0]
+        today_links = supabase.table("subscription_plan_meals") \
+            .select("*") \
+            .eq("plan_id", sub["plan_id"]) \
+            .eq("day_number", sub["current_day_number"]) \
+            .execute().data or []
+
+        item_ids = list({l["menu_item_id"] for l in today_links})
+        items = {}
+        if item_ids:
+            rows = supabase.table("menu_items").select("*").in_("id", item_ids).execute().data or []
+            items = {r["id"]: r for r in rows}
+
+        today_meals = [
+            {**link, "menu_item": items.get(link["menu_item_id"])}
+            for link in today_links
+        ]
+
+        plan = supabase.table("subscription_plans").select("*").eq("id", sub["plan_id"]).execute().data
+        sub["plan"] = plan[0] if plan else None
+        sub["today_meals"] = today_meals
+        return sub
+
+    except Exception as e:
+        print(f"❌ Get subscription error: {e}")
+        return None
+
+
+def advance_subscription_day_db(user_id: str):
+    try:
+        sub = supabase.table("user_subscriptions") \
+            .select("*").eq("user_id", user_id).eq("status", "active").execute().data
+        if not sub:
+            return {"message": "No active subscription", "error": "not_found"}
+
+        sub = sub[0]
+        plan = supabase.table("subscription_plans").select("meals_per_week").eq("id", sub["plan_id"]).execute().data[0]
+        cycle_len = plan.get("meals_per_week", 7) or 7
+
+        next_day = (sub["current_day_number"] % cycle_len) + 1
+        result = supabase.table("user_subscriptions") \
+            .update({"current_day_number": next_day}) \
+            .eq("id", sub["id"]) \
+            .execute()
+        return {"message": "Advanced to next day!", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Advance day error: {e}")
+        return {"message": "Advance failed", "error": str(e)}
+
+
+def update_subscription_status_db(user_id: str, status: str):
+    try:
+        result = supabase.table("user_subscriptions") \
+            .update({"status": status}) \
+            .eq("user_id", user_id) \
+            .eq("status", "active") \
+            .execute()
+        if not result.data:
+            return {"message": "No active subscription found", "error": "not_found"}
+        return {"message": f"Subscription {status}!", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Subscription status update error: {e}")
+        return {"message": "Update failed", "error": str(e)}

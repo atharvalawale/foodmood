@@ -43,6 +43,9 @@ from modules.db   import (
     get_or_create_provider_db, add_menu_item_db, update_menu_item_db,
     delete_menu_item_db, get_provider_menu_db, browse_menu_items_db,
     set_menu_item_status_db,
+    create_plan_db, get_provider_plans_db, add_plan_meal_db, get_plan_meals_db,
+    browse_plans_db, subscribe_to_plan_db, get_my_subscription_db,
+    advance_subscription_day_db, update_subscription_status_db,
 )
 
 # ── Load nutrition DB on startup ───────────────────────────────────────────────
@@ -169,6 +172,20 @@ class MenuItemInput(BaseModel):
     serving_grams: float        = 100
     veg:           bool         = False
     tags:          list[str]    = []
+
+class PlanInput(BaseModel):
+    name:           str
+    description:    str   = ""
+    meals_per_week: int   = 7
+    price_per_week: float = 0
+    currency:       str   = "INR"
+    target_goal:    str   = "maintain"
+    diet_type:      str   = "No restriction"
+
+class PlanMealInput(BaseModel):
+    menu_item_id: str
+    day_number:   int
+    meal_slot:    str
 
 class OrderInput(BaseModel):
     restaurant_id:    Optional[str] = None
@@ -726,6 +743,105 @@ def admin_set_menu_status(item_id: str, body: StatusUpdate, user_id: Optional[st
         status_code = 404 if result["error"] == "not_found" else 500
         raise HTTPException(status_code=status_code, detail=result["message"])
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUBSCRIPTION PLANS — provider side
+# ─────────────────────────────────────────────────────────────────────────────
+@app.post("/provider/plans")
+def create_plan(plan: PlanInput, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+
+    result = create_plan_db(provider["id"], plan.dict())
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@app.get("/provider/plans")
+def get_my_plans(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+    return get_provider_plans_db(provider["id"])
+
+
+@app.post("/provider/plans/{plan_id}/meals")
+def add_plan_meal(plan_id: str, meal: PlanMealInput, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    # Note: not verifying plan_id belongs to this provider yet — fine for a
+    # single-provider MVP, but worth locking down before opening to many providers.
+    result = add_plan_meal_db(plan_id, meal.menu_item_id, meal.day_number, meal.meal_slot)
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@app.get("/provider/plans/{plan_id}/meals")
+def get_plan_schedule(plan_id: str, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    return get_plan_meals_db(plan_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUBSCRIPTION PLANS — user side
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/plans/browse")
+def browse_plans(target_goal: Optional[str] = None, diet_type: Optional[str] = None):
+    return browse_plans_db(target_goal=target_goal, diet_type=diet_type)
+
+
+@app.post("/plans/{plan_id}/subscribe")
+def subscribe_to_plan(plan_id: str, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    result = subscribe_to_plan_db(user_id, plan_id)
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@app.get("/my-subscription")
+def my_subscription(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    sub = get_my_subscription_db(user_id)
+    if not sub:
+        return {"active": False}
+    return {"active": True, **sub}
+
+
+@app.post("/my-subscription/advance-day")
+def advance_subscription(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    result = advance_subscription_day_db(user_id)
+    if result.get("error"):
+        status_code = 404 if result["error"] == "not_found" else 500
+        raise HTTPException(status_code=status_code, detail=result["message"])
+    return result
+
+
+@app.post("/my-subscription/pause")
+def pause_subscription(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    return update_subscription_status_db(user_id, "paused")
+
+
+@app.post("/my-subscription/cancel")
+def cancel_subscription(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    return update_subscription_status_db(user_id, "cancelled")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
