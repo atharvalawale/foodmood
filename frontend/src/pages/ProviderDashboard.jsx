@@ -56,6 +56,8 @@ export default function ProviderDashboard() {
   const [items,     setItems]    = useState([]);
   const [loading,   setLoading]  = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [isAdmin,   setIsAdmin]  = useState(false);
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [showForm,  setShowForm] = useState(false);
   const [form,      setForm]     = useState(EMPTY_FORM);
   const [saving,    setSaving]   = useState(false);
@@ -74,8 +76,22 @@ export default function ProviderDashboard() {
       }
       if (!cancelled) setLoading(false);
     })();
+    api.get("/admin/check").then(res => {
+      if (!cancelled) setIsAdmin(!!res.data?.is_admin);
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  async function handleSetStatus(itemId, status) {
+    setUpdatingStatusId(itemId);
+    try {
+      await api.put(`/admin/menu/${itemId}/status`, { status });
+      setItems(prev => prev.map(i => i.id === itemId ? { ...i, status } : i));
+    } catch {
+      setError("Couldn't update verification status.");
+    }
+    setUpdatingStatusId(null);
+  }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggleTag = tag => set("tags",
@@ -556,6 +572,34 @@ export default function ProviderDashboard() {
                                 {tag}
                               </span>
                             ))}
+                          </div>
+                        )}
+
+                        {/* Admin-only: change verification tier */}
+                        {isAdmin && (
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 11, color: C.textSub, marginBottom: 6 }}>
+                              Admin — set verification tier
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              {Object.keys(BADGES).map(key => (
+                                <button
+                                  key={key}
+                                  onClick={(e) => { e.stopPropagation(); handleSetStatus(item.id, key); }}
+                                  disabled={updatingStatusId === item.id || item.status === key}
+                                  style={{
+                                    fontSize: 11, fontWeight: 600,
+                                    padding: "5px 10px", borderRadius: 8,
+                                    border: `0.5px solid ${item.status === key ? BADGES[key].color : C.sep}`,
+                                    background: item.status === key ? BADGES[key].bg : "transparent",
+                                    color: item.status === key ? BADGES[key].color : C.textSub,
+                                    opacity: updatingStatusId === item.id ? 0.5 : 1,
+                                  }}
+                                >
+                                  {BADGES[key].label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         )}
 

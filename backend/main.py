@@ -42,6 +42,7 @@ from modules.db   import (
     get_streak_db, update_streak_db,
     get_or_create_provider_db, add_menu_item_db, update_menu_item_db,
     delete_menu_item_db, get_provider_menu_db, browse_menu_items_db,
+    set_menu_item_status_db,
 )
 
 # ── Load nutrition DB on startup ───────────────────────────────────────────────
@@ -98,6 +99,17 @@ def get_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)) -
     except Exception as e:
         print(f"❌ Token failed: {e}")
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADMIN — verification review
+# Set ADMIN_USER_IDS in your environment (comma-separated Supabase user ids)
+# to whichever account(s) should be able to bump a menu item's tier.
+# ─────────────────────────────────────────────────────────────────────────────
+ADMIN_USER_IDS = [u.strip() for u in os.getenv("ADMIN_USER_IDS", "").split(",") if u.strip()]
+
+def is_admin(user_id: Optional[str]) -> bool:
+    return bool(user_id) and user_id in ADMIN_USER_IDS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -690,6 +702,30 @@ def browse_menu(status: Optional[str] = None, tag: Optional[str] = None, veg: Op
     filtered menu items across all providers.
     """
     return browse_menu_items_db(status=status, tag=tag, veg=veg)
+
+
+VALID_STATUSES = {"unverified", "calculated", "verified", "premium"}
+
+class StatusUpdate(BaseModel):
+    status: str
+
+@app.get("/admin/check")
+def admin_check(user_id: Optional[str] = Depends(get_user_id)):
+    return {"is_admin": is_admin(user_id)}
+
+
+@app.put("/admin/menu/{item_id}/status")
+def admin_set_menu_status(item_id: str, body: StatusUpdate, user_id: Optional[str] = Depends(get_user_id)):
+    if not is_admin(user_id):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    if body.status not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {sorted(VALID_STATUSES)}")
+
+    result = set_menu_item_status_db(item_id, body.status)
+    if result.get("error"):
+        status_code = 404 if result["error"] == "not_found" else 500
+        raise HTTPException(status_code=status_code, detail=result["message"])
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────

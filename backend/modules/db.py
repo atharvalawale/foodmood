@@ -438,3 +438,22 @@ def browse_menu_items_db(status: str = None, tag: str = None, veg: bool = None):
     except Exception as e:
         print(f"❌ Menu browse error: {e}")
         return []
+
+
+def set_menu_item_status_db(item_id: str, status: str):
+    """
+    Admin-only action (checked in main.py before this is called) — bumps
+    or resets a menu item's verification tier. Unlike update_menu_item_db,
+    this is NOT restricted to the item's own provider on purpose.
+    """
+    try:
+        result = supabase.table("menu_items") \
+            .update({"status": status}) \
+            .eq("id", item_id) \
+            .execute()
+        if not result.data:
+            return {"message": "Menu item not found", "error": "not_found"}
+        return {"message": f"Status updated to {status}", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Menu status update error: {e}")
+        return {"message": "Status update failed", "error": str(e)}
