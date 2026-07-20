@@ -799,6 +799,12 @@ def browse_plans(target_goal: Optional[str] = None, diet_type: Optional[str] = N
     return browse_plans_db(target_goal=target_goal, diet_type=diet_type)
 
 
+@app.get("/plans/{plan_id}/meals")
+def get_plan_schedule_public(plan_id: str):
+    """Public — lets a user preview a plan's weekly menu before subscribing."""
+    return get_plan_meals_db(plan_id)
+
+
 @app.post("/plans/{plan_id}/subscribe")
 def subscribe_to_plan(plan_id: str, user_id: Optional[str] = Depends(get_user_id)):
     if not user_id:

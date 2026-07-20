@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../api/client";
 
 const C = {
   bg:       "#F2F2F7",
@@ -15,109 +16,75 @@ const C = {
   amber:    "#FF9500",
 };
 
-// ─── Demo meal plan data ───────────────────────────────────────────────────────
-const PLANS = [
-  {
-    id: "lean",
-    name: "Lean & Strong",
-    desc: "High protein, calorie-controlled. Designed for fat loss while preserving muscle.",
-    kcal: 1800,
-    protein: 150,
-    carbs: 160,
-    fat: 55,
-    price: 69,
-    period: "week",
-    tag: "Most popular",
-    tagColor: C.green,
-  },
-  {
-    id: "balanced",
-    name: "Balanced Performance",
-    desc: "Optimal macros for active lifestyles. Sustains energy through training and work.",
-    kcal: 2200,
-    protein: 130,
-    carbs: 240,
-    fat: 70,
-    price: 79,
-    period: "week",
-    tag: null,
-  },
-  {
-    id: "muscle",
-    name: "Muscle Builder",
-    desc: "Caloric surplus with high protein. Supports lean muscle gain and recovery.",
-    kcal: 2600,
-    protein: 180,
-    carbs: 290,
-    fat: 75,
-    price: 89,
-    period: "week",
-    tag: "Best for gains",
-    tagColor: C.blue,
-  },
-];
-
 const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-const DEMO_MEALS = {
-  Mon: [
-    { slot: "Breakfast", name: "Greek Yogurt Bowl",       kcal: 380, protein: 28, carbs: 42, fat: 8,  verified: true  },
-    { slot: "Lunch",     name: "Grilled Chicken Wrap",    kcal: 520, protein: 44, carbs: 38, fat: 14, verified: true  },
-    { slot: "Snack",     name: "Protein Bar",             kcal: 220, protein: 20, carbs: 22, fat: 6,  verified: true  },
-    { slot: "Dinner",    name: "Salmon with Quinoa",      kcal: 580, protein: 48, carbs: 52, fat: 16, verified: true  },
-  ],
-  Tue: [
-    { slot: "Breakfast", name: "Overnight Oats",          kcal: 360, protein: 18, carbs: 58, fat: 7,  verified: true  },
-    { slot: "Lunch",     name: "Turkey Rice Bowl",        kcal: 490, protein: 42, carbs: 44, fat: 10, verified: true  },
-    { slot: "Snack",     name: "Cottage Cheese & Fruit",  kcal: 180, protein: 16, carbs: 18, fat: 3,  verified: false },
-    { slot: "Dinner",    name: "Beef Stir Fry",           kcal: 560, protein: 46, carbs: 38, fat: 18, verified: true  },
-  ],
-  Wed: [
-    { slot: "Breakfast", name: "Egg White Omelette",      kcal: 280, protein: 24, carbs: 12, fat: 9,  verified: true  },
-    { slot: "Lunch",     name: "Tuna Pasta Salad",        kcal: 510, protein: 40, carbs: 52, fat: 12, verified: true  },
-    { slot: "Snack",     name: "Mixed Nuts",              kcal: 190, protein: 6,  carbs: 8,  fat: 16, verified: false },
-    { slot: "Dinner",    name: "Chicken Breast & Veggies",kcal: 520, protein: 52, carbs: 28, fat: 14, verified: true  },
-  ],
-  Thu: [
-    { slot: "Breakfast", name: "Protein Pancakes",        kcal: 420, protein: 32, carbs: 48, fat: 10, verified: true  },
-    { slot: "Lunch",     name: "Lentil Soup & Bread",     kcal: 440, protein: 24, carbs: 62, fat: 8,  verified: true  },
-    { slot: "Snack",     name: "Apple & Peanut Butter",   kcal: 200, protein: 6,  carbs: 24, fat: 10, verified: false },
-    { slot: "Dinner",    name: "Shrimp & Brown Rice",     kcal: 530, protein: 44, carbs: 56, fat: 10, verified: true  },
-  ],
-  Fri: [
-    { slot: "Breakfast", name: "Smoothie Bowl",           kcal: 340, protein: 20, carbs: 52, fat: 6,  verified: true  },
-    { slot: "Lunch",     name: "Grilled Fish Tacos",      kcal: 500, protein: 38, carbs: 46, fat: 16, verified: true  },
-    { slot: "Snack",     name: "Hummus & Veggies",        kcal: 160, protein: 6,  carbs: 18, fat: 8,  verified: false },
-    { slot: "Dinner",    name: "Turkey Meatballs & Pasta",kcal: 580, protein: 48, carbs: 58, fat: 14, verified: true  },
-  ],
-  Sat: [
-    { slot: "Breakfast", name: "Avocado Toast & Eggs",    kcal: 440, protein: 22, carbs: 38, fat: 22, verified: true  },
-    { slot: "Lunch",     name: "Chicken Caesar Salad",    kcal: 420, protein: 36, carbs: 22, fat: 20, verified: true  },
-    { slot: "Snack",     name: "Whey Protein Shake",      kcal: 200, protein: 24, carbs: 14, fat: 4,  verified: true  },
-    { slot: "Dinner",    name: "Beef Tenderloin & Veggies",kcal:560, protein: 52, carbs: 18, fat: 28, verified: true  },
-  ],
-  Sun: [
-    { slot: "Breakfast", name: "French Toast & Berries",  kcal: 400, protein: 18, carbs: 62, fat: 10, verified: false },
-    { slot: "Lunch",     name: "Vegetable Curry & Rice",  kcal: 480, protein: 16, carbs: 72, fat: 12, verified: true  },
-    { slot: "Snack",     name: "Greek Yogurt",            kcal: 140, protein: 14, carbs: 12, fat: 3,  verified: true  },
-    { slot: "Dinner",    name: "Roast Chicken & Potatoes",kcal: 560, protein: 48, carbs: 42, fat: 18, verified: true  },
-  ],
-};
+// day_number in the backend is 1-7 and cycles weekly — map it to labels for display.
+const dayNumberToLabel = (n) => WEEK_DAYS[(n - 1) % 7];
 
 export default function MealPlan() {
   const nav = useNavigate();
-  const [selectedPlan, setSelectedPlan] = useState("lean");
-  const [selectedDay,  setSelectedDay]  = useState("Mon");
-  const [subscribed,   setSubscribed]   = useState(false);
-  const [swapping,     setSwapping]     = useState(null);
+  const [plans,        setPlans]        = useState([]);
+  const [loadingPlans, setLoadingPlans]  = useState(true);
+  const [selectedPlan, setSelectedPlan]  = useState(null);
+  const [selectedDay,  setSelectedDay]   = useState(1);
+  const [planMeals,    setPlanMeals]     = useState([]);
+  const [loadingMeals, setLoadingMeals]  = useState(false);
+  const [subscription, setSubscription]  = useState(null); // active subscription, or null
+  const [subscribing,  setSubscribing]   = useState(false);
+  const [error,        setError]         = useState("");
+  const [swapping,     setSwapping]      = useState(null); // decorative only — no backend action yet
 
-  const plan  = PLANS.find(p => p.id === selectedPlan);
-  const meals = DEMO_MEALS[selectedDay] || [];
+  // Load available plans + the user's current subscription (if any) on mount.
+  useEffect(() => {
+    api.get("/plans/browse").then(res => {
+      const list = res.data || [];
+      setPlans(list);
+      if (list.length > 0) setSelectedPlan(list[0].id);
+      setLoadingPlans(false);
+    }).catch(() => { setError("Couldn't load plans."); setLoadingPlans(false); });
+
+    api.get("/my-subscription").then(res => {
+      if (res.data?.active) setSubscription(res.data);
+    }).catch(() => {});
+  }, []);
+
+  // Load the selected plan's weekly schedule whenever it changes.
+  useEffect(() => {
+    if (!selectedPlan) return;
+    setLoadingMeals(true);
+    api.get(`/plans/${selectedPlan}/meals`).then(res => {
+      setPlanMeals(res.data || []);
+      setLoadingMeals(false);
+    }).catch(() => { setError("Couldn't load this plan's meals."); setLoadingMeals(false); });
+  }, [selectedPlan]);
+
+  async function handleSubscribe() {
+    setSubscribing(true);
+    try {
+      await api.post(`/plans/${selectedPlan}/subscribe`);
+      const res = await api.get("/my-subscription");
+      if (res.data?.active) setSubscription(res.data);
+    } catch {
+      setError("Couldn't subscribe. Try again.");
+    }
+    setSubscribing(false);
+  }
+
+  async function handleCancel() {
+    try {
+      await api.post("/my-subscription/cancel");
+      setSubscription(null);
+    } catch {
+      setError("Couldn't cancel. Try again.");
+    }
+  }
+
+  const plan  = plans.find(p => p.id === selectedPlan);
+  const meals = planMeals.filter(m => m.day_number === selectedDay);
   const dayTotals = meals.reduce((a, m) => ({
-    kcal:    a.kcal    + m.kcal,
-    protein: a.protein + m.protein,
-    carbs:   a.carbs   + m.carbs,
-    fat:     a.fat     + m.fat,
+    kcal:    a.kcal    + (m.menu_item?.calories || 0),
+    protein: a.protein + (m.menu_item?.protein  || 0),
+    carbs:   a.carbs   + (m.menu_item?.carbs    || 0),
+    fat:     a.fat     + (m.menu_item?.fat      || 0),
   }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 
   const s = {
@@ -208,14 +175,22 @@ export default function MealPlan() {
 
         {/* ── PLAN SELECTOR ── */}
         <div style={s.secLbl}>Choose Your Plan</div>
+        {loadingPlans && (
+          <div style={{ padding: "0 16px", fontSize: 13, color: C.textSub }}>Loading plans…</div>
+        )}
+        {!loadingPlans && plans.length === 0 && (
+          <div style={{ padding: "0 16px", fontSize: 13, color: C.textSub }}>
+            No plans available yet — check back soon.
+          </div>
+        )}
         <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
-          {PLANS.map(p => {
+          {plans.map(p => {
             const active = selectedPlan === p.id;
             return (
               <div
                 key={p.id}
                 className="tappable"
-                onClick={() => setSelectedPlan(p.id)}
+                onClick={() => { setSelectedPlan(p.id); setSelectedDay(1); }}
                 style={{
                   background: C.surface,
                   border: `0.5px solid ${active ? C.accent : C.sep}`,
@@ -227,32 +202,23 @@ export default function MealPlan() {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{p.name}</div>
-                      {p.tag && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 600, color: p.tagColor,
-                          background: `${p.tagColor}18`, borderRadius: 6, padding: "2px 8px",
-                        }}>
-                          {p.tag}
-                        </span>
-                      )}
                     </div>
-                    <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.5 }}>{p.desc}</div>
+                    <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.5 }}>{p.description}</div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 16 }}>
                     <div style={{ fontSize: 20, fontWeight: 700, color: C.text, letterSpacing: -0.5 }}>
-                      €{p.price}
+                      ₹{p.price_per_week}
                     </div>
                     <div style={{ fontSize: 11, color: C.textSub }}>/ week</div>
                   </div>
                 </div>
 
-                {/* Macro pills */}
+                {/* Info pills */}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {[
-                    { lbl: `${p.kcal} kcal`, color: C.accent },
-                    { lbl: `${p.protein}g protein`, color: C.blue  },
-                    { lbl: `${p.carbs}g carbs`,   color: C.green },
-                    { lbl: `${p.fat}g fat`,       color: C.amber },
+                    { lbl: `${p.meals_per_week} meals/week`, color: C.accent },
+                    { lbl: p.target_goal, color: C.blue  },
+                    { lbl: p.diet_type,   color: C.green },
                   ].map(t => (
                     <span key={t.lbl} style={{
                       fontSize: 11, fontWeight: 500,
@@ -290,12 +256,12 @@ export default function MealPlan() {
 
         {/* Day selector */}
         <div style={{ display: "flex", gap: 6, padding: "0 16px", overflowX: "auto", marginBottom: 12 }}>
-          {WEEK_DAYS.map(day => {
-            const active = selectedDay === day;
+          {[1, 2, 3, 4, 5, 6, 7].map(dayNum => {
+            const active = selectedDay === dayNum;
             return (
               <button
-                key={day}
-                onClick={() => setSelectedDay(day)}
+                key={dayNum}
+                onClick={() => setSelectedDay(dayNum)}
                 style={{
                   flexShrink: 0, padding: "7px 14px",
                   borderRadius: 20, border: "none",
@@ -307,7 +273,7 @@ export default function MealPlan() {
                   transition: "all 0.15s",
                 }}
               >
-                {day}
+                {dayNumberToLabel(dayNum)}
               </button>
             );
           })}
@@ -336,66 +302,80 @@ export default function MealPlan() {
 
         {/* Meal list for selected day */}
         <div style={s.card}>
-          {meals.map((meal, i) => (
-            <div
-              key={i}
-              className="fade-in"
-              style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: "12px 0",
-                borderBottom: i < meals.length - 1 ? `0.5px solid ${C.sep}` : "none",
-                animationDelay: `${i * 0.05}s`,
-              }}
-            >
-              {/* Slot icon */}
-              <div style={{
-                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                background: C.surface2,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <i className={`ti ${
-                  meal.slot === "Breakfast" ? "ti-sun" :
-                  meal.slot === "Lunch"     ? "ti-sun-high" :
-                  meal.slot === "Snack"     ? "ti-apple" : "ti-moon"
-                }`} style={{ fontSize: 18, color: C.textSub }} aria-hidden="true" />
-              </div>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{meal.name}</div>
-                  {/* Verified badge */}
-                  {meal.verified && (
-                    <span style={{
-                      fontSize: 9, fontWeight: 700, color: C.green,
-                      background: "rgba(48,209,88,0.1)", borderRadius: 4,
-                      padding: "1px 6px", flexShrink: 0,
-                    }}>
-                      ✓ Verified
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 11, color: C.textSub }}>
-                  {meal.slot} · {meal.kcal} kcal · {meal.protein}g P
-                </div>
-              </div>
-
-              {/* Swap button */}
-              <button
-                onClick={() => setSwapping(swapping === i ? null : i)}
+          {loadingMeals && (
+            <div style={{ padding: "16px 0", textAlign: "center", fontSize: 13, color: C.textSub }}>
+              Loading meals…
+            </div>
+          )}
+          {!loadingMeals && meals.length === 0 && (
+            <div style={{ padding: "16px 0", textAlign: "center", fontSize: 13, color: C.textSub }}>
+              No meals scheduled for this day yet.
+            </div>
+          )}
+          {meals.map((meal, i) => {
+            const item = meal.menu_item || {};
+            const isVerified = item.status === "verified" || item.status === "premium";
+            const slotLabel = (meal.meal_slot || "").replace("_", " ");
+            return (
+              <div
+                key={meal.id || i}
+                className="fade-in"
                 style={{
-                  background: swapping === i ? C.accent : C.surface2,
-                  border: `0.5px solid ${swapping === i ? C.accent : C.sep}`,
-                  borderRadius: 8, padding: "5px 10px",
-                  fontSize: 11, fontWeight: 600,
-                  color: swapping === i ? "#fff" : C.textSub,
-                  cursor: "pointer", fontFamily: "'Inter', sans-serif",
-                  flexShrink: 0,
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 0",
+                  borderBottom: i < meals.length - 1 ? `0.5px solid ${C.sep}` : "none",
+                  animationDelay: `${i * 0.05}s`,
                 }}
               >
-                Swap
-              </button>
-            </div>
-          ))}
+                {/* Slot icon */}
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                  background: C.surface2,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <i className={`ti ${
+                    slotLabel === "breakfast" ? "ti-sun" :
+                    slotLabel === "lunch"     ? "ti-sun-high" :
+                    slotLabel.includes("snack") ? "ti-apple" : "ti-moon"
+                  }`} style={{ fontSize: 18, color: C.textSub }} aria-hidden="true" />
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{item.name}</div>
+                    {isVerified && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: C.green,
+                        background: "rgba(48,209,88,0.1)", borderRadius: 4,
+                        padding: "1px 6px", flexShrink: 0,
+                      }}>
+                        ✓ Verified
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textSub, textTransform: "capitalize" }}>
+                    {slotLabel} · {item.calories || 0} kcal · {item.protein || 0}g P
+                  </div>
+                </div>
+
+                {/* Swap button — visual only for now, no backend action yet */}
+                <button
+                  onClick={() => setSwapping(swapping === i ? null : i)}
+                  style={{
+                    background: swapping === i ? C.accent : C.surface2,
+                    border: `0.5px solid ${swapping === i ? C.accent : C.sep}`,
+                    borderRadius: 8, padding: "5px 10px",
+                    fontSize: 11, fontWeight: 600,
+                    color: swapping === i ? "#fff" : C.textSub,
+                    cursor: "pointer", fontFamily: "'Inter', sans-serif",
+                    flexShrink: 0,
+                  }}
+                >
+                  Swap
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {/* ── PLAN CONTROLS ── */}
@@ -420,7 +400,7 @@ export default function MealPlan() {
         </div>
 
         {/* ── SUBSCRIBE CTA ── */}
-        {!subscribed ? (
+        {plan && !subscription ? (
           <div style={{ padding: "8px 16px 0" }}>
             <div style={{
               background: C.surface, border: `0.5px solid ${C.sep}`,
@@ -430,35 +410,37 @@ export default function MealPlan() {
                 {plan.name}
               </div>
               <div style={{ fontSize: 13, color: C.textSub, marginBottom: 16 }}>
-                {plan.kcal} kcal · {plan.protein}g protein · 7 days
+                {plan.meals_per_week} meals/week · {plan.target_goal}
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <div>
                   <span style={{ fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: -1 }}>
-                    €{plan.price}
+                    ₹{plan.price_per_week}
                   </span>
                   <span style={{ fontSize: 13, color: C.textSub }}> / week</span>
                 </div>
                 <div style={{ fontSize: 12, color: C.textSub }}>Cancel anytime</div>
               </div>
               <button
-                onClick={() => setSubscribed(true)}
+                onClick={handleSubscribe}
+                disabled={subscribing}
                 style={{
                   width: "100%", padding: "15px 0",
                   background: C.accent, color: "#fff",
                   border: "none", borderRadius: 14,
                   fontSize: 15, fontWeight: 700,
                   cursor: "pointer", fontFamily: "'Inter', sans-serif",
+                  opacity: subscribing ? 0.6 : 1,
                 }}
               >
-                Start this plan
+                {subscribing ? "Starting…" : "Start this plan"}
               </button>
-              <div style={{ fontSize: 11, color: C.textSub, textAlign: "center", marginTop: 10 }}>
-                First delivery within 48 hours · Cancel anytime
-              </div>
+              {error && (
+                <div style={{ fontSize: 12, color: C.red, textAlign: "center", marginTop: 10 }}>{error}</div>
+              )}
             </div>
           </div>
-        ) : (
+        ) : subscription ? (
           <div style={{ padding: "8px 16px 0" }}>
             <div style={{
               background: "#F0FFF4", border: `0.5px solid ${C.green}33`,
@@ -469,10 +451,10 @@ export default function MealPlan() {
                 Plan activated
               </div>
               <div style={{ fontSize: 13, color: C.textSub, marginBottom: 16 }}>
-                {plan.name} · First delivery within 48 hours
+                {subscription.plan?.name} · Day {subscription.current_day_number} of {subscription.plan?.meals_per_week}
               </div>
               <button
-                onClick={() => setSubscribed(false)}
+                onClick={handleCancel}
                 style={{
                   background: C.surface, border: `0.5px solid ${C.sep}`,
                   borderRadius: 12, padding: "10px 24px",
@@ -484,7 +466,7 @@ export default function MealPlan() {
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* ── BOTTOM NAV ── */}
         <div style={{
