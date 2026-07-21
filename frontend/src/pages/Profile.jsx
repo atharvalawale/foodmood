@@ -613,6 +613,7 @@ export default function Profile() {
               { icon: "ti-home",     label: "Dashboard", to: "/dashboard" },
               { icon: "ti-scan",     label: "Scanner",   to: "/scanner"   },
               { icon: "ti-map-pin",  label: "Places",    to: "/places"    },
+              { icon: "ti-calendar", label: "Meal Plans", to: "/meal-plan" },
               { icon: "ti-building-store", label: "Provider Dashboard", to: "/provider" },
               { icon: "ti-logout",   label: "Log Out",   to: "/login", logout: true },
             ].map(a => (
