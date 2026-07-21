@@ -93,6 +93,82 @@ export default function ProviderDashboard() {
     setUpdatingStatusId(null);
   }
 
+  // ── Subscription plans ──────────────────────────────────────────────────
+  const EMPTY_PLAN_FORM = {
+    name: "", description: "", meals_per_week: 7, price_per_week: "",
+    target_goal: "maintain", diet_type: "No restriction",
+  };
+  const EMPTY_PLAN_MEAL_FORM = { menu_item_id: "", day_number: 1, meal_slot: "breakfast" };
+
+  const [plans,           setPlans]           = useState([]);
+  const [loadingPlans,    setLoadingPlans]     = useState(true);
+  const [showPlanForm,    setShowPlanForm]     = useState(false);
+  const [planForm,        setPlanForm]         = useState(EMPTY_PLAN_FORM);
+  const [savingPlan,      setSavingPlan]       = useState(false);
+  const [expandedPlan,    setExpandedPlan]     = useState(null);
+  const [planMeals,       setPlanMeals]        = useState([]);
+  const [loadingPlanMeals,setLoadingPlanMeals] = useState(false);
+  const [planMealForm,    setPlanMealForm]     = useState(EMPTY_PLAN_MEAL_FORM);
+  const [addingMeal,      setAddingMeal]       = useState(false);
+
+  useEffect(() => {
+    if (tab !== "plans") return;
+    let cancelled = false;
+    setLoadingPlans(true);
+    api.get("/provider/plans").then(res => {
+      if (!cancelled) setPlans(res.data || []);
+    }).catch(() => {}).finally(() => { if (!cancelled) setLoadingPlans(false); });
+    return () => { cancelled = true; };
+  }, [tab]);
+
+  async function handleCreatePlan() {
+    if (!planForm.name.trim()) { setError("Plan name is required."); return; }
+    setError(""); setSavingPlan(true);
+    try {
+      const res = await api.post("/provider/plans", {
+        ...planForm,
+        meals_per_week: parseInt(planForm.meals_per_week) || 7,
+        price_per_week: parseFloat(planForm.price_per_week) || 0,
+      });
+      setPlans(prev => [res.data.data, ...prev]);
+      setShowPlanForm(false);
+      setPlanForm(EMPTY_PLAN_FORM);
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Couldn't create plan.");
+    }
+    setSavingPlan(false);
+  }
+
+  async function openPlanSchedule(planId) {
+    if (expandedPlan === planId) { setExpandedPlan(null); return; }
+    setExpandedPlan(planId);
+    setLoadingPlanMeals(true);
+    try {
+      const res = await api.get(`/provider/plans/${planId}/meals`);
+      setPlanMeals(res.data || []);
+    } catch {
+      setError("Couldn't load this plan's schedule.");
+    }
+    setLoadingPlanMeals(false);
+  }
+
+  async function handleAddPlanMeal(planId) {
+    if (!planMealForm.menu_item_id) { setError("Pick a menu item first."); return; }
+    setAddingMeal(true);
+    try {
+      await api.post(`/provider/plans/${planId}/meals`, {
+        ...planMealForm,
+        day_number: parseInt(planMealForm.day_number),
+      });
+      const res = await api.get(`/provider/plans/${planId}/meals`);
+      setPlanMeals(res.data || []);
+      setPlanMealForm(EMPTY_PLAN_MEAL_FORM);
+    } catch {
+      setError("Couldn't add that meal to the plan.");
+    }
+    setAddingMeal(false);
+  }
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggleTag = tag => set("tags",
     form.tags.includes(tag) ? form.tags.filter(t => t !== tag) : [...form.tags, tag]
@@ -240,6 +316,7 @@ export default function ProviderDashboard() {
             {[
               { id: "menu",    label: "Menu Items"    },
               { id: "badges",  label: "Verification"  },
+              { id: "plans",   label: "Meal Plans"    },
               { id: "analytics",label: "Analytics"    },
             ].map(t => (
               <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -689,6 +766,228 @@ export default function ProviderDashboard() {
                     <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 3 }}>{s.title}</div>
                     <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.5 }}>{s.desc}</div>
                   </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ══ TAB: PLANS ══ */}
+        {tab === "plans" && (
+          <>
+            <div style={{ padding: "12px 16px 0", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowPlanForm(v => !v)}
+                style={{
+                  background: C.accent, color: "#fff", border: "none",
+                  borderRadius: 12, padding: "8px 14px",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                {showPlanForm ? "Cancel" : "+ Create Plan"}
+              </button>
+            </div>
+
+            {showPlanForm && (
+              <div style={{ ...s.card, marginTop: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>New Plan</div>
+
+                <div style={{ fontSize: 11, color: C.textSub, marginBottom: 4 }}>Plan Name *</div>
+                <input
+                  value={planForm.name}
+                  onChange={e => setPlanForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. High Protein Weekly"
+                  style={{
+                    width: "100%", padding: "10px 12px", borderRadius: 10,
+                    border: `0.5px solid ${C.sep}`, fontSize: 14, marginBottom: 10,
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                />
+
+                <div style={{ fontSize: 11, color: C.textSub, marginBottom: 4 }}>Description</div>
+                <input
+                  value={planForm.description}
+                  onChange={e => setPlanForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Short description"
+                  style={{
+                    width: "100%", padding: "10px 12px", borderRadius: 10,
+                    border: `0.5px solid ${C.sep}`, fontSize: 14, marginBottom: 10,
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                />
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.textSub, marginBottom: 4 }}>Meals/week</div>
+                    <input
+                      type="number" value={planForm.meals_per_week}
+                      onChange={e => setPlanForm(f => ({ ...f, meals_per_week: e.target.value }))}
+                      style={{
+                        width: "100%", padding: "10px 12px", borderRadius: 10,
+                        border: `0.5px solid ${C.sep}`, fontSize: 14,
+                        fontFamily: "'Inter', sans-serif",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.textSub, marginBottom: 4 }}>Price/week (₹)</div>
+                    <input
+                      type="number" value={planForm.price_per_week}
+                      onChange={e => setPlanForm(f => ({ ...f, price_per_week: e.target.value }))}
+                      placeholder="0"
+                      style={{
+                        width: "100%", padding: "10px 12px", borderRadius: 10,
+                        border: `0.5px solid ${C.sep}`, fontSize: 14,
+                        fontFamily: "'Inter', sans-serif",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.textSub, marginBottom: 4 }}>Target Goal</div>
+                    <select
+                      value={planForm.target_goal}
+                      onChange={e => setPlanForm(f => ({ ...f, target_goal: e.target.value }))}
+                      style={{
+                        width: "100%", padding: "10px 12px", borderRadius: 10,
+                        border: `0.5px solid ${C.sep}`, fontSize: 14,
+                        fontFamily: "'Inter', sans-serif", background: C.surface,
+                      }}
+                    >
+                      {["cut", "bulk", "maintain", "recomp"].map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.textSub, marginBottom: 4 }}>Diet Type</div>
+                    <select
+                      value={planForm.diet_type}
+                      onChange={e => setPlanForm(f => ({ ...f, diet_type: e.target.value }))}
+                      style={{
+                        width: "100%", padding: "10px 12px", borderRadius: 10,
+                        border: `0.5px solid ${C.sep}`, fontSize: 14,
+                        fontFamily: "'Inter', sans-serif", background: C.surface,
+                      }}
+                    >
+                      {["No restriction","Vegetarian","Vegan","Keto","Halal","Gluten-free","Diabetic-friendly"]
+                        .map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleCreatePlan}
+                  disabled={savingPlan}
+                  style={{
+                    width: "100%", padding: "13px 0",
+                    background: C.accent, color: "#fff",
+                    border: "none", borderRadius: 12,
+                    fontSize: 14, fontWeight: 700,
+                    cursor: "pointer", fontFamily: "'Inter', sans-serif",
+                    opacity: savingPlan ? 0.6 : 1,
+                  }}
+                >
+                  {savingPlan ? "Creating…" : "Create Plan"}
+                </button>
+              </div>
+            )}
+
+            <div style={s.secLbl}>Your Plans</div>
+            <div style={{ padding: "0 16px" }}>
+              {loadingPlans && (
+                <div style={{ fontSize: 13, color: C.textSub, padding: "8px 0" }}>Loading plans…</div>
+              )}
+              {!loadingPlans && plans.length === 0 && (
+                <div style={{ fontSize: 13, color: C.textSub, padding: "8px 0" }}>
+                  No plans yet — create one above.
+                </div>
+              )}
+              {plans.map(p => (
+                <div key={p.id} style={{ ...s.card, cursor: "pointer" }}>
+                  <div onClick={() => openPlanSchedule(p.id)}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{p.name}</div>
+                        <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
+                          {p.meals_per_week} meals/week · {p.target_goal} · {p.diet_type}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>₹{p.price_per_week}</div>
+                    </div>
+                  </div>
+
+                  {expandedPlan === p.id && (
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `0.5px solid ${C.sep}` }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>
+                        Add a meal to this plan
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                        <select
+                          value={planMealForm.day_number}
+                          onChange={e => setPlanMealForm(f => ({ ...f, day_number: e.target.value }))}
+                          style={{ padding: "9px 10px", borderRadius: 9, border: `0.5px solid ${C.sep}`, fontSize: 13, background: C.surface }}
+                        >
+                          {[1,2,3,4,5,6,7].map(d => <option key={d} value={d}>Day {d}</option>)}
+                        </select>
+                        <select
+                          value={planMealForm.meal_slot}
+                          onChange={e => setPlanMealForm(f => ({ ...f, meal_slot: e.target.value }))}
+                          style={{ padding: "9px 10px", borderRadius: 9, border: `0.5px solid ${C.sep}`, fontSize: 13, background: C.surface }}
+                        >
+                          {["breakfast","morning_snack","lunch","snack","dinner"].map(s => (
+                            <option key={s} value={s}>{s.replace("_", " ")}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <select
+                        value={planMealForm.menu_item_id}
+                        onChange={e => setPlanMealForm(f => ({ ...f, menu_item_id: e.target.value }))}
+                        style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: `0.5px solid ${C.sep}`, fontSize: 13, background: C.surface, marginBottom: 8 }}
+                      >
+                        <option value="">Choose a menu item…</option>
+                        {items.map(i => (
+                          <option key={i.id} value={i.id}>{i.name} · {i.kcal} kcal</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleAddPlanMeal(p.id)}
+                        disabled={addingMeal}
+                        style={{
+                          width: "100%", padding: "10px 0", borderRadius: 10,
+                          border: "none", background: C.accent, color: "#fff",
+                          fontSize: 13, fontWeight: 600, cursor: "pointer",
+                          fontFamily: "'Inter', sans-serif", marginBottom: 14,
+                          opacity: addingMeal ? 0.6 : 1,
+                        }}
+                      >
+                        {addingMeal ? "Adding…" : "Add to Plan"}
+                      </button>
+
+                      <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, marginBottom: 6 }}>
+                        Scheduled meals
+                      </div>
+                      {loadingPlanMeals && <div style={{ fontSize: 12, color: C.textSub }}>Loading…</div>}
+                      {!loadingPlanMeals && planMeals.length === 0 && (
+                        <div style={{ fontSize: 12, color: C.textSub }}>Nothing scheduled yet.</div>
+                      )}
+                      {[1,2,3,4,5,6,7].map(dayNum => {
+                        const dayItems = planMeals.filter(m => m.day_number === dayNum);
+                        if (dayItems.length === 0) return null;
+                        return (
+                          <div key={dayNum} style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 3 }}>Day {dayNum}</div>
+                            {dayItems.map(m => (
+                              <div key={m.id} style={{ fontSize: 12, color: C.textSub, paddingLeft: 8 }}>
+                                {(m.meal_slot || "").replace("_", " ")} — {m.menu_item?.name || "Unknown item"}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
