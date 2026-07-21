@@ -28,8 +28,9 @@ export default function MealPlan() {
   const [selectedDay,  setSelectedDay]   = useState(1);
   const [planMeals,    setPlanMeals]     = useState([]);
   const [loadingMeals, setLoadingMeals]  = useState(false);
-  const [subscription, setSubscription]  = useState(null); // active subscription, or null
+  const [subscription, setSubscription]  = useState(null); // active/paused subscription, or null
   const [subscribing,  setSubscribing]   = useState(false);
+  const [controlBusy,  setControlBusy]   = useState(false);
   const [error,        setError]         = useState("");
   const [swapping,     setSwapping]      = useState(null); // decorative only — no backend action yet
 
@@ -43,8 +44,14 @@ export default function MealPlan() {
     }).catch(() => { setError("Couldn't load plans."); setLoadingPlans(false); });
 
     api.get("/my-subscription").then(res => {
-      if (res.data?.active) setSubscription(res.data);
-    }).catch(() => {});
+      if (res.data?.active) {
+        setSubscription(res.data);
+      } else {
+        setSubscription(null);
+      }
+    }).catch((e) => {
+      setError(`Couldn't check your subscription: ${e?.response?.status || e.message}`);
+    });
   }, []);
 
   // Load the selected plan's weekly schedule whenever it changes.
@@ -76,6 +83,34 @@ export default function MealPlan() {
     } catch {
       setError("Couldn't cancel. Try again.");
     }
+  }
+
+  async function handlePauseResume() {
+    setControlBusy(true);
+    try {
+      if (subscription.status === "paused") {
+        await api.post("/my-subscription/resume");
+      } else {
+        await api.post("/my-subscription/pause");
+      }
+      const res = await api.get("/my-subscription");
+      setSubscription(res.data?.active ? res.data : null);
+    } catch {
+      setError("Couldn't update your plan. Try again.");
+    }
+    setControlBusy(false);
+  }
+
+  async function handleSkipDay() {
+    setControlBusy(true);
+    try {
+      await api.post("/my-subscription/advance-day");
+      const res = await api.get("/my-subscription");
+      setSubscription(res.data?.active ? res.data : null);
+    } catch {
+      setError("Couldn't skip ahead. Try again.");
+    }
+    setControlBusy(false);
   }
 
   const plan  = plans.find(p => p.id === selectedPlan);
@@ -382,22 +417,43 @@ export default function MealPlan() {
         <div style={s.secLbl}>Plan Controls</div>
         <div style={{ padding: "0 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
           {[
-            { icon: "ti-player-pause", label: "Pause plan",  sub: "Resume anytime",    color: C.amber },
-            { icon: "ti-refresh",      label: "Swap a meal", sub: "Tap any meal above", color: C.blue  },
-            { icon: "ti-x",            label: "Skip a day",  sub: "Skip tomorrow",      color: C.red   },
-            { icon: "ti-calendar",     label: "View full week",sub: "See all 7 days",   color: C.green },
+            {
+              icon: subscription?.status === "paused" ? "ti-player-play" : "ti-player-pause",
+              label: subscription?.status === "paused" ? "Resume plan" : "Pause plan",
+              sub: subscription?.status === "paused" ? "Back to active" : "Resume anytime",
+              color: C.amber,
+              onClick: handlePauseResume,
+              disabled: !subscription,
+            },
+            { icon: "ti-refresh",  label: "Swap a meal",   sub: "Tap any meal above", color: C.blue, disabled: true },
+            {
+              icon: "ti-x", label: "Skip a day", sub: "Move to next day", color: C.red,
+              onClick: handleSkipDay, disabled: !subscription,
+            },
+            { icon: "ti-calendar", label: "View full week", sub: "Use the day tabs above", color: C.green, disabled: true },
           ].map(a => (
-            <div key={a.label} style={{
-              background: C.surface, border: `0.5px solid ${C.sep}`,
-              borderRadius: 14, padding: "14px 14px",
-              display: "flex", flexDirection: "column", gap: 8,
-            }}>
+            <div
+              key={a.label}
+              onClick={() => { if (!a.disabled && a.onClick && !controlBusy) a.onClick(); }}
+              style={{
+                background: C.surface, border: `0.5px solid ${C.sep}`,
+                borderRadius: 14, padding: "14px 14px",
+                display: "flex", flexDirection: "column", gap: 8,
+                cursor: a.disabled ? "default" : "pointer",
+                opacity: a.disabled ? 0.5 : (controlBusy ? 0.6 : 1),
+              }}
+            >
               <i className={`ti ${a.icon}`} style={{ fontSize: 20, color: a.color }} aria-hidden="true" />
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{a.label}</div>
               <div style={{ fontSize: 11, color: C.textSub }}>{a.sub}</div>
             </div>
           ))}
         </div>
+        {!subscription && (
+          <div style={{ padding: "0 16px", fontSize: 11, color: C.textSub, marginBottom: 8 }}>
+            Subscribe to a plan below to use these controls.
+          </div>
+        )}
 
         {/* ── SUBSCRIBE CTA ── */}
         {plan && !subscription ? (
@@ -443,12 +499,15 @@ export default function MealPlan() {
         ) : subscription ? (
           <div style={{ padding: "8px 16px 0" }}>
             <div style={{
-              background: "#F0FFF4", border: `0.5px solid ${C.green}33`,
+              background: subscription.status === "paused" ? "#FFF8E6" : "#F0FFF4",
+              border: `0.5px solid ${(subscription.status === "paused" ? C.amber : C.green)}33`,
               borderRadius: 20, padding: "20px 20px", textAlign: "center",
             }}>
-              <i className="ti ti-circle-check" style={{ fontSize: 40, color: C.green, display: "block", marginBottom: 10 }} aria-hidden="true" />
+              <i className={`ti ${subscription.status === "paused" ? "ti-player-pause" : "ti-circle-check"}`}
+                style={{ fontSize: 40, color: subscription.status === "paused" ? C.amber : C.green, display: "block", marginBottom: 10 }}
+                aria-hidden="true" />
               <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-                Plan activated
+                {subscription.status === "paused" ? "Plan paused" : "Plan activated"}
               </div>
               <div style={{ fontSize: 13, color: C.textSub, marginBottom: 16 }}>
                 {subscription.plan?.name} · Day {subscription.current_day_number} of {subscription.plan?.meals_per_week}
