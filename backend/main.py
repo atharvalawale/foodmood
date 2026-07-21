@@ -843,6 +843,13 @@ def pause_subscription(user_id: Optional[str] = Depends(get_user_id)):
     return update_subscription_status_db(user_id, "paused")
 
 
+@app.post("/my-subscription/resume")
+def resume_subscription(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    return update_subscription_status_db(user_id, "active", from_status="paused")
+
+
 @app.post("/my-subscription/cancel")
 def cancel_subscription(user_id: Optional[str] = Depends(get_user_id)):
     if not user_id:

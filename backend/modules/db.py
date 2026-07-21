@@ -554,11 +554,11 @@ def browse_plans_db(target_goal: str = None, diet_type: str = None):
 
 def subscribe_to_plan_db(user_id: str, plan_id: str):
     try:
-        # Cancel any existing active subscription first — one active plan at a time.
+        # Cancel any existing active OR paused subscription first — one at a time.
         supabase.table("user_subscriptions") \
             .update({"status": "cancelled"}) \
             .eq("user_id", user_id) \
-            .eq("status", "active") \
+            .in_("status", ["active", "paused"]) \
             .execute()
 
         data = {"user_id": user_id, "plan_id": plan_id, "status": "active", "current_day_number": 1}
@@ -571,14 +571,15 @@ def subscribe_to_plan_db(user_id: str, plan_id: str):
 
 def get_my_subscription_db(user_id: str):
     """
-    Returns the user's active subscription plus today's scheduled meals
-    (today = current_day_number in the plan's weekly cycle).
+    Returns the user's current subscription (active OR paused — cancelled
+    ones are excluded) plus today's scheduled meals (today = current_day_number
+    in the plan's weekly cycle).
     """
     try:
         sub_result = supabase.table("user_subscriptions") \
             .select("*") \
             .eq("user_id", user_id) \
-            .eq("status", "active") \
+            .in_("status", ["active", "paused"]) \
             .execute()
 
         if not sub_result.data:
@@ -634,15 +635,19 @@ def advance_subscription_day_db(user_id: str):
         return {"message": "Advance failed", "error": str(e)}
 
 
-def update_subscription_status_db(user_id: str, status: str):
+def update_subscription_status_db(user_id: str, status: str, from_status: str = "active"):
+    """
+    from_status is the status the row must currently have to be updated —
+    e.g. pause/cancel look for 'active', resume looks for 'paused'.
+    """
     try:
         result = supabase.table("user_subscriptions") \
             .update({"status": status}) \
             .eq("user_id", user_id) \
-            .eq("status", "active") \
+            .eq("status", from_status) \
             .execute()
         if not result.data:
-            return {"message": "No active subscription found", "error": "not_found"}
+            return {"message": f"No {from_status} subscription found", "error": "not_found"}
         return {"message": f"Subscription {status}!", "data": result.data[0]}
     except Exception as e:
         print(f"❌ Subscription status update error: {e}")
