@@ -482,6 +482,47 @@ def create_plan_db(provider_id: str, plan: dict):
         return {"message": "Plan create failed", "error": str(e)}
 
 
+def update_plan_db(plan_id: str, provider_id: str, plan: dict):
+    """
+    Only updates a plan that belongs to this provider — same ownership
+    guard as update_menu_item_db.
+    """
+    try:
+        data = {
+            "name":           plan.get("name", ""),
+            "description":    plan.get("description", ""),
+            "meals_per_week": int(plan.get("meals_per_week", 7) or 7),
+            "price_per_week": float(plan.get("price_per_week", 0) or 0),
+            "currency":       plan.get("currency", "INR"),
+            "target_goal":    plan.get("target_goal", "maintain"),
+            "diet_type":      plan.get("diet_type", "No restriction"),
+        }
+        result = supabase.table("subscription_plans") \
+            .update(data) \
+            .eq("id", plan_id) \
+            .eq("provider_id", provider_id) \
+            .execute()
+        if not result.data:
+            return {"message": "Plan not found or not yours", "error": "not_found"}
+        return {"message": "Plan updated!", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Plan update error: {e}")
+        return {"message": "Plan update failed", "error": str(e)}
+
+
+def delete_plan_db(plan_id: str, provider_id: str):
+    try:
+        supabase.table("subscription_plans") \
+            .delete() \
+            .eq("id", plan_id) \
+            .eq("provider_id", provider_id) \
+            .execute()
+        return {"message": "Plan deleted!"}
+    except Exception as e:
+        print(f"❌ Plan delete error: {e}")
+        return {"message": "Plan delete failed", "error": str(e)}
+
+
 def get_provider_plans_db(provider_id: str):
     try:
         result = supabase.table("subscription_plans") \

@@ -60,6 +60,7 @@ export default function ProviderDashboard() {
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [showForm,  setShowForm] = useState(false);
   const [form,      setForm]     = useState(EMPTY_FORM);
+  const [editingItemId, setEditingItemId] = useState(null); // null = creating new
   const [saving,    setSaving]   = useState(false);
   const [saved,     setSaved]    = useState(false);
   const [error,     setError]    = useState("");
@@ -104,7 +105,9 @@ export default function ProviderDashboard() {
   const [loadingPlans,    setLoadingPlans]     = useState(true);
   const [showPlanForm,    setShowPlanForm]     = useState(false);
   const [planForm,        setPlanForm]         = useState(EMPTY_PLAN_FORM);
+  const [editingPlanId,   setEditingPlanId]    = useState(null); // null = creating new
   const [savingPlan,      setSavingPlan]       = useState(false);
+  const [deletingPlanId,  setDeletingPlanId]   = useState(null);
   const [expandedPlan,    setExpandedPlan]     = useState(null);
   const [planMeals,       setPlanMeals]        = useState([]);
   const [loadingPlanMeals,setLoadingPlanMeals] = useState(false);
@@ -121,23 +124,54 @@ export default function ProviderDashboard() {
     return () => { cancelled = true; };
   }, [tab]);
 
+  function startEditPlan(p) {
+    setPlanForm({
+      name: p.name, description: p.description || "",
+      meals_per_week: p.meals_per_week, price_per_week: String(p.price_per_week),
+      target_goal: p.target_goal, diet_type: p.diet_type,
+    });
+    setEditingPlanId(p.id);
+    setShowPlanForm(true);
+    setExpandedPlan(null);
+  }
+
   async function handleCreatePlan() {
     if (!planForm.name.trim()) { setError("Plan name is required."); return; }
     setError(""); setSavingPlan(true);
+    const payload = {
+      ...planForm,
+      meals_per_week: parseInt(planForm.meals_per_week) || 7,
+      price_per_week: parseFloat(planForm.price_per_week) || 0,
+    };
     try {
-      const res = await api.post("/provider/plans", {
-        ...planForm,
-        meals_per_week: parseInt(planForm.meals_per_week) || 7,
-        price_per_week: parseFloat(planForm.price_per_week) || 0,
-      });
-      setPlans(prev => [res.data.data, ...prev]);
+      if (editingPlanId) {
+        const res = await api.put(`/provider/plans/${editingPlanId}`, payload);
+        setPlans(prev => prev.map(p => p.id === editingPlanId ? res.data.data : p));
+      } else {
+        const res = await api.post("/provider/plans", payload);
+        setPlans(prev => [res.data.data, ...prev]);
+      }
       setShowPlanForm(false);
       setPlanForm(EMPTY_PLAN_FORM);
+      setEditingPlanId(null);
     } catch (e) {
-      setError(e?.response?.data?.detail || "Couldn't create plan.");
+      setError(e?.response?.data?.detail || "Couldn't save plan.");
     }
     setSavingPlan(false);
   }
+
+  async function handleDeletePlan(planId) {
+    setDeletingPlanId(planId);
+    try {
+      await api.delete(`/provider/plans/${planId}`);
+      setPlans(prev => prev.filter(p => p.id !== planId));
+      setExpandedPlan(null);
+    } catch {
+      setError("Couldn't delete this plan.");
+    }
+    setDeletingPlanId(null);
+  }
+
 
   async function openPlanSchedule(planId) {
     if (expandedPlan === planId) { setExpandedPlan(null); return; }
@@ -186,29 +220,48 @@ export default function ProviderDashboard() {
     return Math.round(Math.min(Math.max(score, 0), 100));
   })();
 
+  function startEditItem(item) {
+    setForm({
+      name: item.name, kcal: String(item.kcal), protein: String(item.protein),
+      carbs: String(item.carbs), fat: String(item.fat), fiber: String(item.fiber ?? ""),
+      sugar: "", sodium: "", serving_grams: "100",
+      veg: item.veg, tags: item.tags || [],
+    });
+    setEditingItemId(item.id);
+    setShowForm(true);
+    setExpanded(null);
+  }
+
   async function handleSubmit() {
     if (!form.name.trim()) { setError("Meal name is required."); return; }
     if (!form.kcal)        { setError("Calories are required.");  return; }
     setError(""); setSaving(true);
+    const payload = {
+      name:          form.name.trim(),
+      calories:      parseFloat(form.kcal)    || 0,
+      protein:       parseFloat(form.protein) || 0,
+      carbs:         parseFloat(form.carbs)   || 0,
+      fat:           parseFloat(form.fat)     || 0,
+      fiber:         parseFloat(form.fiber)   || 0,
+      sugar:         parseFloat(form.sugar)   || 0,
+      sodium:        parseFloat(form.sodium)  || 0,
+      serving_grams: parseFloat(form.serving_grams) || 100,
+      veg:           form.veg,
+      tags:          form.tags,
+    };
     try {
-      const res = await api.post("/provider/menu", {
-        name:          form.name.trim(),
-        calories:      parseFloat(form.kcal)    || 0,
-        protein:       parseFloat(form.protein) || 0,
-        carbs:         parseFloat(form.carbs)   || 0,
-        fat:           parseFloat(form.fat)     || 0,
-        fiber:         parseFloat(form.fiber)   || 0,
-        sugar:         parseFloat(form.sugar)   || 0,
-        sodium:        parseFloat(form.sodium)  || 0,
-        serving_grams: parseFloat(form.serving_grams) || 100,
-        veg:           form.veg,
-        tags:          form.tags,
-      });
-      const newItem = mapFromBackend(res.data.data);
-      setItems(prev => [newItem, ...prev]);
+      if (editingItemId) {
+        const res = await api.put(`/provider/menu/${editingItemId}`, payload);
+        const updated = mapFromBackend(res.data.data);
+        setItems(prev => prev.map(i => i.id === editingItemId ? updated : i));
+      } else {
+        const res = await api.post("/provider/menu", payload);
+        const newItem = mapFromBackend(res.data.data);
+        setItems(prev => [newItem, ...prev]);
+      }
       setSaving(false); setSaved(true);
       setTimeout(() => {
-        setSaved(false); setShowForm(false); setForm(EMPTY_FORM);
+        setSaved(false); setShowForm(false); setForm(EMPTY_FORM); setEditingItemId(null);
       }, 1800);
     } catch (e) {
       setSaving(false);
@@ -297,7 +350,7 @@ export default function ProviderDashboard() {
               <div style={{ fontSize: 12, color: C.textSub }}>Manage your verified menu</div>
             </div>
             <button
-              onClick={() => { setShowForm(true); setTab("menu"); }}
+              onClick={() => { setForm(EMPTY_FORM); setEditingItemId(null); setShowForm(true); setTab("menu"); }}
               style={{
                 background: C.accent, color: "#fff", border: "none",
                 borderRadius: 12, padding: "8px 14px",
@@ -361,8 +414,10 @@ export default function ProviderDashboard() {
             {showForm && (
               <div style={s.card} className="fade-in">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>New Menu Item</div>
-                  <button onClick={() => { setShowForm(false); setForm(EMPTY_FORM); setError(""); }} style={{
+                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
+                    {editingItemId ? "Edit Menu Item" : "New Menu Item"}
+                  </div>
+                  <button onClick={() => { setShowForm(false); setForm(EMPTY_FORM); setError(""); setEditingItemId(null); }} style={{
                     background: C.surface2, border: "none", borderRadius: 8,
                     width: 28, height: 28, cursor: "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center",
@@ -526,7 +581,7 @@ export default function ProviderDashboard() {
                   transition: "background 0.2s",
                   opacity: saving ? 0.7 : 1,
                 }}>
-                  {saved ? "Meal added" : saving ? "Submitting…" : "Submit for verification"}
+                  {saved ? (editingItemId ? "Changes saved" : "Meal added") : saving ? "Submitting…" : (editingItemId ? "Save Changes" : "Submit for verification")}
                 </button>
                 <div style={{ fontSize: 11, color: C.textSub, textAlign: "center", marginTop: 8 }}>
                   FoodMood will review and assign a verification badge within 48 hours
@@ -680,19 +735,31 @@ export default function ProviderDashboard() {
                           </div>
                         )}
 
-                        {/* Delete */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
-                          disabled={deletingId === item.id}
-                          style={{
-                            width: "100%", padding: "9px 0", borderRadius: 10,
-                            border: `0.5px solid ${C.red}55`, background: "transparent",
-                            color: C.red, fontSize: 12, fontWeight: 600,
-                            opacity: deletingId === item.id ? 0.5 : 1,
-                          }}
-                        >
-                          {deletingId === item.id ? "Removing…" : "Remove item"}
-                        </button>
+                        {/* Edit / Delete */}
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); startEditItem(item); }}
+                            style={{
+                              flex: 1, padding: "9px 0", borderRadius: 10,
+                              border: `0.5px solid ${C.sep}`, background: "transparent",
+                              color: C.text, fontSize: 12, fontWeight: 600,
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                            disabled={deletingId === item.id}
+                            style={{
+                              flex: 1, padding: "9px 0", borderRadius: 10,
+                              border: `0.5px solid ${C.red}55`, background: "transparent",
+                              color: C.red, fontSize: 12, fontWeight: 600,
+                              opacity: deletingId === item.id ? 0.5 : 1,
+                            }}
+                          >
+                            {deletingId === item.id ? "Removing…" : "Remove item"}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -777,7 +844,10 @@ export default function ProviderDashboard() {
           <>
             <div style={{ padding: "12px 16px 0", display: "flex", justifyContent: "flex-end" }}>
               <button
-                onClick={() => setShowPlanForm(v => !v)}
+                onClick={() => {
+                  if (showPlanForm) { setShowPlanForm(false); setEditingPlanId(null); setPlanForm(EMPTY_PLAN_FORM); }
+                  else { setPlanForm(EMPTY_PLAN_FORM); setEditingPlanId(null); setShowPlanForm(true); }
+                }}
                 style={{
                   background: C.accent, color: "#fff", border: "none",
                   borderRadius: 12, padding: "8px 14px",
@@ -791,7 +861,9 @@ export default function ProviderDashboard() {
 
             {showPlanForm && (
               <div style={{ ...s.card, marginTop: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>New Plan</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>
+                  {editingPlanId ? "Edit Plan" : "New Plan"}
+                </div>
 
                 <div style={{ fontSize: 11, color: C.textSub, marginBottom: 4 }}>Plan Name *</div>
                 <input
@@ -889,7 +961,7 @@ export default function ProviderDashboard() {
                     opacity: savingPlan ? 0.6 : 1,
                   }}
                 >
-                  {savingPlan ? "Creating…" : "Create Plan"}
+                  {savingPlan ? "Saving…" : (editingPlanId ? "Save Changes" : "Create Plan")}
                 </button>
               </div>
             )}
@@ -920,6 +992,31 @@ export default function ProviderDashboard() {
 
                   {expandedPlan === p.id && (
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: `0.5px solid ${C.sep}` }}>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startEditPlan(p); }}
+                          style={{
+                            flex: 1, padding: "9px 0", borderRadius: 10,
+                            border: `0.5px solid ${C.sep}`, background: "transparent",
+                            color: C.text, fontSize: 12, fontWeight: 600,
+                          }}
+                        >
+                          Edit Plan
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeletePlan(p.id); }}
+                          disabled={deletingPlanId === p.id}
+                          style={{
+                            flex: 1, padding: "9px 0", borderRadius: 10,
+                            border: `0.5px solid ${C.red}55`, background: "transparent",
+                            color: C.red, fontSize: 12, fontWeight: 600,
+                            opacity: deletingPlanId === p.id ? 0.5 : 1,
+                          }}
+                        >
+                          {deletingPlanId === p.id ? "Removing…" : "Delete Plan"}
+                        </button>
+                      </div>
+
                       <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>
                         Add a meal to this plan
                       </div>

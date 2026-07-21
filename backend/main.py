@@ -46,6 +46,7 @@ from modules.db   import (
     create_plan_db, get_provider_plans_db, add_plan_meal_db, get_plan_meals_db,
     browse_plans_db, subscribe_to_plan_db, get_my_subscription_db,
     advance_subscription_day_db, update_subscription_status_db,
+    update_plan_db, delete_plan_db,
 )
 
 # ── Load nutrition DB on startup ───────────────────────────────────────────────
@@ -770,6 +771,31 @@ def get_my_plans(user_id: Optional[str] = Depends(get_user_id)):
     if not provider:
         raise HTTPException(status_code=500, detail="Could not load provider account.")
     return get_provider_plans_db(provider["id"])
+
+
+@app.put("/provider/plans/{plan_id}")
+def edit_my_plan(plan_id: str, plan: PlanInput, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+
+    result = update_plan_db(plan_id, provider["id"], plan.dict())
+    if result.get("error"):
+        status_code = 404 if result["error"] == "not_found" else 500
+        raise HTTPException(status_code=status_code, detail=result["message"])
+    return result
+
+
+@app.delete("/provider/plans/{plan_id}")
+def remove_my_plan(plan_id: str, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+    return delete_plan_db(plan_id, provider["id"])
 
 
 @app.post("/provider/plans/{plan_id}/meals")
