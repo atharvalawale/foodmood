@@ -46,6 +46,8 @@ export default function MealPlan() {
     api.get("/my-subscription").then(res => {
       if (res.data?.active) {
         setSubscription(res.data);
+        setSelectedDay(res.data.current_day_number); // open on the day you're actually on
+        if (res.data.plan?.id) setSelectedPlan(res.data.plan.id); // also default to your subscribed plan
       } else {
         setSubscription(null);
       }
@@ -106,7 +108,12 @@ export default function MealPlan() {
     try {
       await api.post("/my-subscription/advance-day");
       const res = await api.get("/my-subscription");
-      setSubscription(res.data?.active ? res.data : null);
+      if (res.data?.active) {
+        setSubscription(res.data);
+        setSelectedDay(res.data.current_day_number); // move the day tabs forward too
+      } else {
+        setSubscription(null);
+      }
     } catch {
       setError("Couldn't skip ahead. Try again.");
     }
