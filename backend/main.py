@@ -47,6 +47,7 @@ from modules.db   import (
     browse_plans_db, subscribe_to_plan_db, get_my_subscription_db,
     advance_subscription_day_db, update_subscription_status_db,
     update_plan_db, delete_plan_db, plan_belongs_to_provider_db,
+    get_my_week_meals_db, get_swap_options_db, swap_meal_db,
 )
 
 # ── Load nutrition DB on startup ───────────────────────────────────────────────
@@ -882,6 +883,44 @@ def resume_subscription(user_id: Optional[str] = Depends(get_user_id)):
     if not user_id:
         raise HTTPException(status_code=401, detail="Login required.")
     return update_subscription_status_db(user_id, "active", from_status="paused")
+
+
+class SwapInput(BaseModel):
+    day_number: int
+    meal_slot: str
+    menu_item_id: str
+
+@app.get("/my-subscription/week")
+def my_week_meals(user_id: Optional[str] = Depends(get_user_id)):
+    """Full 7-day schedule with this user's personal swaps applied."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    result = get_my_week_meals_db(user_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No active subscription.")
+    return result
+
+
+@app.get("/my-subscription/swap-options")
+def swap_options(day_number: int, meal_slot: str, user_id: Optional[str] = Depends(get_user_id)):
+    """AI-ranked alternatives for one scheduled slot — same provider, diet/allergy-safe, closest calorie match first."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    result = get_swap_options_db(user_id, day_number, meal_slot)
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=404, detail=result["message"])
+    return result
+
+
+@app.post("/my-subscription/swap")
+def swap_meal(body: SwapInput, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    result = swap_meal_db(user_id, body.day_number, body.meal_slot, body.menu_item_id)
+    if result.get("error"):
+        status_code = 409 if result["error"] == "conflict" else 404 if result["error"] == "not_found" else 500
+        raise HTTPException(status_code=status_code, detail=result["message"])
+    return result
 
 
 @app.post("/my-subscription/cancel")

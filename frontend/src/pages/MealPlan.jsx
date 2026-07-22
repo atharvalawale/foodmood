@@ -33,7 +33,10 @@ export default function MealPlan() {
   const [controlBusy,  setControlBusy]   = useState(false);
   const [showFullWeek, setShowFullWeek]  = useState(false);
   const [error,        setError]         = useState("");
-  const [swapping,     setSwapping]      = useState(null); // decorative only — no backend action yet
+  const [swapping,     setSwapping]      = useState(null); // "{day}-{slot}" of the row currently showing options, or null
+  const [swapOptions,  setSwapOptions]   = useState([]);
+  const [loadingSwapOptions, setLoadingSwapOptions] = useState(false);
+  const [swappingBusy, setSwappingBusy]  = useState(false);
 
   // Load available plans + the user's current subscription (if any) on mount.
   useEffect(() => {
@@ -58,14 +61,56 @@ export default function MealPlan() {
   }, []);
 
   // Load the selected plan's weekly schedule whenever it changes.
+  // If the user is subscribed to THIS plan, use the personalized week view
+  // (their swaps applied) instead of the raw shared template.
   useEffect(() => {
     if (!selectedPlan) return;
     setLoadingMeals(true);
-    api.get(`/plans/${selectedPlan}/meals`).then(res => {
+    const isMySubscribedPlan = subscription?.plan?.id === selectedPlan;
+    const request = isMySubscribedPlan
+      ? api.get("/my-subscription/week")
+      : api.get(`/plans/${selectedPlan}/meals`);
+
+    request.then(res => {
       setPlanMeals(res.data || []);
       setLoadingMeals(false);
     }).catch(() => { setError("Couldn't load this plan's meals."); setLoadingMeals(false); });
-  }, [selectedPlan]);
+  }, [selectedPlan, subscription?.plan?.id]);
+
+  async function refreshWeek() {
+    if (subscription?.plan?.id !== selectedPlan) return;
+    try {
+      const res = await api.get("/my-subscription/week");
+      setPlanMeals(res.data || []);
+    } catch { /* keep showing stale data rather than erroring on a background refresh */ }
+  }
+
+  async function openSwap(dayNumber, mealSlot) {
+    const key = `${dayNumber}-${mealSlot}`;
+    if (swapping === key) { setSwapping(null); return; }
+    setSwapping(key);
+    setSwapOptions([]);
+    setLoadingSwapOptions(true);
+    try {
+      const res = await api.get("/my-subscription/swap-options", { params: { day_number: dayNumber, meal_slot: mealSlot } });
+      setSwapOptions(res.data || []);
+    } catch {
+      setError("Couldn't load swap options.");
+    }
+    setLoadingSwapOptions(false);
+  }
+
+  async function chooseSwap(dayNumber, mealSlot, menuItemId) {
+    setSwappingBusy(true);
+    try {
+      await api.post("/my-subscription/swap", { day_number: dayNumber, meal_slot: mealSlot, menu_item_id: menuItemId });
+      await refreshWeek();
+      setSwapping(null);
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Couldn't swap that meal.");
+    }
+    setSwappingBusy(false);
+  }
 
   async function handleSubscribe() {
     setSubscribing(true);
@@ -363,63 +408,120 @@ export default function MealPlan() {
             const item = meal.menu_item || {};
             const isVerified = item.status === "verified" || item.status === "premium";
             const slotLabel = (meal.meal_slot || "").replace("_", " ");
+            const swapKey = `${meal.day_number}-${meal.meal_slot}`;
+            const isSwappingThis = swapping === swapKey;
+            const canSwap = subscription?.plan?.id === selectedPlan;
             return (
               <div
                 key={meal.id || i}
                 className="fade-in"
                 style={{
-                  display: "flex", alignItems: "center", gap: 12,
                   padding: "12px 0",
                   borderBottom: i < meals.length - 1 ? `0.5px solid ${C.sep}` : "none",
                   animationDelay: `${i * 0.05}s`,
                 }}
               >
-                {/* Slot icon */}
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                  background: C.surface2,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <i className={`ti ${
-                    slotLabel === "breakfast" ? "ti-sun" :
-                    slotLabel === "lunch"     ? "ti-sun-high" :
-                    slotLabel.includes("snack") ? "ti-apple" : "ti-moon"
-                  }`} style={{ fontSize: 18, color: C.textSub }} aria-hidden="true" />
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {/* Slot icon */}
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    background: C.surface2,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <i className={`ti ${
+                      slotLabel === "breakfast" ? "ti-sun" :
+                      slotLabel === "lunch"     ? "ti-sun-high" :
+                      slotLabel.includes("snack") ? "ti-apple" : "ti-moon"
+                    }`} style={{ fontSize: 18, color: C.textSub }} aria-hidden="true" />
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{item.name}</div>
+                      {isVerified && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, color: C.green,
+                          background: "rgba(48,209,88,0.1)", borderRadius: 4,
+                          padding: "1px 6px", flexShrink: 0,
+                        }}>
+                          ✓ Verified
+                        </span>
+                      )}
+                      {meal.is_swapped && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, color: C.blue,
+                          background: "rgba(0,122,255,0.1)", borderRadius: 4,
+                          padding: "1px 6px", flexShrink: 0,
+                        }}>
+                          Swapped
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textSub, textTransform: "capitalize" }}>
+                      {slotLabel} · {item.calories || 0} kcal · {item.protein || 0}g P
+                    </div>
+                  </div>
+
+                  {/* Swap button */}
+                  <button
+                    onClick={() => canSwap && openSwap(meal.day_number, meal.meal_slot)}
+                    disabled={!canSwap}
+                    title={!canSwap ? "Subscribe to this plan to swap meals" : ""}
+                    style={{
+                      background: isSwappingThis ? C.accent : C.surface2,
+                      border: `0.5px solid ${isSwappingThis ? C.accent : C.sep}`,
+                      borderRadius: 8, padding: "5px 10px",
+                      fontSize: 11, fontWeight: 600,
+                      color: isSwappingThis ? "#fff" : C.textSub,
+                      cursor: canSwap ? "pointer" : "default",
+                      fontFamily: "'Inter', sans-serif",
+                      flexShrink: 0, opacity: canSwap ? 1 : 0.5,
+                    }}
+                  >
+                    Swap
+                  </button>
                 </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{item.name}</div>
-                    {isVerified && (
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, color: C.green,
-                        background: "rgba(48,209,88,0.1)", borderRadius: 4,
-                        padding: "1px 6px", flexShrink: 0,
-                      }}>
-                        ✓ Verified
-                      </span>
+                {/* Inline swap-options picker — AI-ranked, diet/allergy-safe alternatives */}
+                {isSwappingThis && (
+                  <div style={{
+                    marginTop: 10, background: C.surface2, borderRadius: 12,
+                    padding: "10px 12px",
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, marginBottom: 8 }}>
+                      Alternatives that fit your goals
+                    </div>
+                    {loadingSwapOptions && (
+                      <div style={{ fontSize: 12, color: C.textSub }}>Finding good swaps…</div>
                     )}
+                    {!loadingSwapOptions && swapOptions.length === 0 && (
+                      <div style={{ fontSize: 12, color: C.textSub }}>
+                        No safe alternatives from this provider right now.
+                      </div>
+                    )}
+                    {swapOptions.map(opt => (
+                      <div
+                        key={opt.id}
+                        onClick={() => !swappingBusy && chooseSwap(meal.day_number, meal.meal_slot, opt.id)}
+                        style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "8px 0", cursor: swappingBusy ? "default" : "pointer",
+                          borderTop: `0.5px solid ${C.sep}`,
+                          opacity: swappingBusy ? 0.5 : 1,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{opt.name}</div>
+                          <div style={{ fontSize: 11, color: C.textSub }}>
+                            {opt.calories} kcal · {opt.protein}g P
+                            {(opt.status === "verified" || opt.status === "premium") && "  ·  ✓ Verified"}
+                          </div>
+                        </div>
+                        <i className="ti ti-chevron-right" style={{ fontSize: 14, color: C.textSub }} aria-hidden="true" />
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ fontSize: 11, color: C.textSub, textTransform: "capitalize" }}>
-                    {slotLabel} · {item.calories || 0} kcal · {item.protein || 0}g P
-                  </div>
-                </div>
-
-                {/* Swap button — visual only for now, no backend action yet */}
-                <button
-                  onClick={() => setSwapping(swapping === i ? null : i)}
-                  style={{
-                    background: swapping === i ? C.accent : C.surface2,
-                    border: `0.5px solid ${swapping === i ? C.accent : C.sep}`,
-                    borderRadius: 8, padding: "5px 10px",
-                    fontSize: 11, fontWeight: 600,
-                    color: swapping === i ? "#fff" : C.textSub,
-                    cursor: "pointer", fontFamily: "'Inter', sans-serif",
-                    flexShrink: 0,
-                  }}
-                >
-                  Swap
-                </button>
+                )}
               </div>
             );
           })}
@@ -462,7 +564,7 @@ export default function MealPlan() {
                         borderTop: i > 0 ? `0.5px solid ${C.sep}` : "none",
                       }}>
                         <div style={{ fontSize: 12, color: C.text, textTransform: "capitalize" }}>
-                          {slotLabel} — {item.name}
+                          {slotLabel} — {item.name} {meal.is_swapped && <span style={{ color: C.blue, fontWeight: 700 }}>(swapped)</span>}
                         </div>
                         <div style={{ fontSize: 11, color: C.textSub }}>{item.calories || 0} kcal</div>
                       </div>

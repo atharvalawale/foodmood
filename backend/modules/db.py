@@ -2,6 +2,7 @@
 
 from modules.supabase_client import supabase
 from datetime import date, datetime
+from modules.personalization import DIET_RESTRICTIONS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -712,3 +713,185 @@ def update_subscription_status_db(user_id: str, status: str, from_status: str = 
     except Exception as e:
         print(f"❌ Subscription status update error: {e}")
         return {"message": "Update failed", "error": str(e)}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MEAL SWAPS
+# Swaps are per-user overrides layered on top of a plan's shared template —
+# they never modify subscription_plan_meals itself, so one person's swap
+# never affects anyone else subscribed to the same plan.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _violates_diet(item: dict, diet_type: str) -> bool:
+    """Same keyword-matching approach as personalization.py's meal check."""
+    if not diet_type:
+        return False
+    restricted = DIET_RESTRICTIONS.get(diet_type.strip().lower())
+    if not restricted:
+        return False
+    text = f"{item.get('name','')} {item.get('description','')}".lower()
+    return any(keyword in text for keyword in restricted)
+
+
+def _violates_allergy(item: dict, allergies) -> bool:
+    if not allergies:
+        return False
+    text = f"{item.get('name','')} {item.get('description','')}".lower()
+    for a in allergies:
+        if not a:
+            continue
+        a = a.lower().strip()
+        # Handle simple singular/plural mismatches (e.g. "peanuts" vs "peanut sauce")
+        a_variants = {a, a.rstrip("s"), a + "s"}
+        if any(v in text for v in a_variants if v):
+            return True
+    return False
+
+
+def get_my_week_meals_db(user_id: str):
+    """
+    Returns the user's full 7-day schedule for their active/paused plan,
+    WITH any personal swaps applied on top of the shared template.
+    Each entry is tagged is_swapped so the UI can show that clearly.
+    """
+    try:
+        sub_result = supabase.table("user_subscriptions") \
+            .select("*").eq("user_id", user_id).in_("status", ["active", "paused"]).execute()
+        if not sub_result.data:
+            return None
+        sub = sub_result.data[0]
+
+        links = supabase.table("subscription_plan_meals") \
+            .select("*").eq("plan_id", sub["plan_id"]).order("day_number").execute().data or []
+
+        overrides = supabase.table("subscription_meal_overrides") \
+            .select("*").eq("user_subscription_id", sub["id"]).execute().data or []
+        override_map = {(o["day_number"], o["meal_slot"]): o["menu_item_id"] for o in overrides}
+
+        item_ids = {l["menu_item_id"] for l in links} | set(override_map.values())
+        items = {}
+        if item_ids:
+            rows = supabase.table("menu_items").select("*").in_("id", list(item_ids)).execute().data or []
+            items = {r["id"]: r for r in rows}
+
+        result = []
+        for link in links:
+            key = (link["day_number"], link["meal_slot"])
+            swapped_item_id = override_map.get(key)
+            actual_item_id = swapped_item_id or link["menu_item_id"]
+            result.append({
+                "day_number":  link["day_number"],
+                "meal_slot":   link["meal_slot"],
+                "menu_item":   items.get(actual_item_id),
+                "is_swapped":  swapped_item_id is not None,
+            })
+        return result
+    except Exception as e:
+        print(f"❌ Week meals get error: {e}")
+        return None
+
+
+def get_swap_options_db(user_id: str, day_number: int, meal_slot: str):
+    """
+    Ranked swap candidates for one slot: same provider as the plan, diet/
+    allergy-safe for this user, sorted with verified items and closer
+    calorie match to the original first.
+    """
+    try:
+        sub_result = supabase.table("user_subscriptions") \
+            .select("*").eq("user_id", user_id).in_("status", ["active", "paused"]).execute()
+        if not sub_result.data:
+            return {"error": "not_found", "message": "No active subscription."}
+        sub = sub_result.data[0]
+
+        plan_rows = supabase.table("subscription_plans").select("*").eq("id", sub["plan_id"]).execute().data
+        if not plan_rows:
+            return {"error": "not_found", "message": "Plan not found."}
+        plan = plan_rows[0]
+
+        # Find what's currently scheduled in this slot (for calorie-closeness ranking)
+        current_link = supabase.table("subscription_plan_meals") \
+            .select("*").eq("plan_id", sub["plan_id"]) \
+            .eq("day_number", day_number).eq("meal_slot", meal_slot).execute().data
+        current_calories = 0
+        current_item_id = None
+        if current_link:
+            current_item_id = current_link[0]["menu_item_id"]
+            item_rows = supabase.table("menu_items").select("calories").eq("id", current_item_id).execute().data
+            if item_rows:
+                current_calories = item_rows[0]["calories"] or 0
+
+        profile = get_profile_db(user_id) or {}
+        diet_type = profile.get("diet_type", "No restriction")
+        allergies = profile.get("allergies", [])
+        if isinstance(allergies, str):
+            allergies = [a.strip() for a in allergies.split(",") if a.strip()]
+
+        candidates = supabase.table("menu_items") \
+            .select("*").eq("provider_id", plan["provider_id"]).execute().data or []
+
+        options = []
+        for item in candidates:
+            if item["id"] == current_item_id:
+                continue
+            if _violates_diet(item, diet_type) or _violates_allergy(item, allergies):
+                continue  # never suggest something that conflicts with their diet/allergies
+            options.append(item)
+
+        # Rank: verified/premium first, then closest calorie match to what it's replacing
+        def rank_key(item):
+            tier_rank = {"premium": 0, "verified": 1, "calculated": 2, "unverified": 3}.get(item.get("status"), 4)
+            calorie_gap = abs((item.get("calories") or 0) - current_calories)
+            return (tier_rank, calorie_gap)
+
+        options.sort(key=rank_key)
+        return options[:10]
+    except Exception as e:
+        print(f"❌ Swap options error: {e}")
+        return {"error": "failed", "message": str(e)}
+
+
+def swap_meal_db(user_id: str, day_number: int, meal_slot: str, menu_item_id: str):
+    try:
+        sub_result = supabase.table("user_subscriptions") \
+            .select("*").eq("user_id", user_id).in_("status", ["active", "paused"]).execute()
+        if not sub_result.data:
+            return {"message": "No active subscription", "error": "not_found"}
+        sub = sub_result.data[0]
+
+        # Refuse anything that violates diet/allergy — a manual override
+        # shouldn't be able to bypass the same safety check swap-options uses.
+        item_rows = supabase.table("menu_items").select("*").eq("id", menu_item_id).execute().data
+        if not item_rows:
+            return {"message": "Menu item not found", "error": "not_found"}
+        item = item_rows[0]
+
+        profile = get_profile_db(user_id) or {}
+        diet_type = profile.get("diet_type", "No restriction")
+        allergies = profile.get("allergies", [])
+        if isinstance(allergies, str):
+            allergies = [a.strip() for a in allergies.split(",") if a.strip()]
+        if _violates_diet(item, diet_type) or _violates_allergy(item, allergies):
+            return {"message": "That item conflicts with your diet/allergy settings", "error": "conflict"}
+
+        # Upsert — one override per (subscription, day, slot)
+        existing = supabase.table("subscription_meal_overrides") \
+            .select("id") \
+            .eq("user_subscription_id", sub["id"]) \
+            .eq("day_number", day_number).eq("meal_slot", meal_slot).execute().data
+
+        if existing:
+            result = supabase.table("subscription_meal_overrides") \
+                .update({"menu_item_id": menu_item_id}) \
+                .eq("id", existing[0]["id"]).execute()
+        else:
+            result = supabase.table("subscription_meal_overrides").insert({
+                "user_subscription_id": sub["id"],
+                "day_number": day_number,
+                "meal_slot": meal_slot,
+                "menu_item_id": menu_item_id,
+            }).execute()
+
+        return {"message": "Meal swapped!", "data": result.data[0] if result.data else None}
+    except Exception as e:
+        print(f"❌ Swap meal error: {e}")
+        return {"message": "Swap failed", "error": str(e)}
