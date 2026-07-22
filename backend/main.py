@@ -46,7 +46,7 @@ from modules.db   import (
     create_plan_db, get_provider_plans_db, add_plan_meal_db, get_plan_meals_db,
     browse_plans_db, subscribe_to_plan_db, get_my_subscription_db,
     advance_subscription_day_db, update_subscription_status_db,
-    update_plan_db, delete_plan_db,
+    update_plan_db, delete_plan_db, plan_belongs_to_provider_db,
 )
 
 # ── Load nutrition DB on startup ───────────────────────────────────────────────
@@ -802,11 +802,14 @@ def remove_my_plan(plan_id: str, user_id: Optional[str] = Depends(get_user_id)):
 def add_plan_meal(plan_id: str, meal: PlanMealInput, user_id: Optional[str] = Depends(get_user_id)):
     if not user_id:
         raise HTTPException(status_code=401, detail="Login required.")
-    # Note: not verifying plan_id belongs to this provider yet — fine for a
-    # single-provider MVP, but worth locking down before opening to many providers.
-    result = add_plan_meal_db(plan_id, meal.menu_item_id, meal.day_number, meal.meal_slot)
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+
+    result = add_plan_meal_db(plan_id, provider["id"], meal.menu_item_id, meal.day_number, meal.meal_slot)
     if result.get("error"):
-        raise HTTPException(status_code=500, detail=result["error"])
+        status_code = 404 if result["error"] == "not_found" else 500
+        raise HTTPException(status_code=status_code, detail=result["message"])
     return result
 
 
@@ -814,6 +817,11 @@ def add_plan_meal(plan_id: str, meal: PlanMealInput, user_id: Optional[str] = De
 def get_plan_schedule(plan_id: str, user_id: Optional[str] = Depends(get_user_id)):
     if not user_id:
         raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+    if not plan_belongs_to_provider_db(plan_id, provider["id"]):
+        raise HTTPException(status_code=404, detail="Plan not found or not yours.")
     return get_plan_meals_db(plan_id)
 
 

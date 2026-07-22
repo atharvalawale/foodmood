@@ -536,8 +536,27 @@ def get_provider_plans_db(provider_id: str):
         return []
 
 
-def add_plan_meal_db(plan_id: str, menu_item_id: str, day_number: int, meal_slot: str):
+def plan_belongs_to_provider_db(plan_id: str, provider_id: str) -> bool:
     try:
+        rows = supabase.table("subscription_plans").select("provider_id").eq("id", plan_id).execute().data
+        return bool(rows) and rows[0]["provider_id"] == provider_id
+    except Exception as e:
+        print(f"❌ Plan ownership check error: {e}")
+        return False
+
+
+def add_plan_meal_db(plan_id: str, provider_id: str, menu_item_id: str, day_number: int, meal_slot: str):
+    try:
+        # The plan must belong to this provider...
+        if not plan_belongs_to_provider_db(plan_id, provider_id):
+            return {"message": "Plan not found or not yours", "error": "not_found"}
+
+        # ...and so must the menu item being scheduled into it — otherwise
+        # any provider could add someone else's dish to their own plan.
+        item_rows = supabase.table("menu_items").select("provider_id").eq("id", menu_item_id).execute().data
+        if not item_rows or item_rows[0]["provider_id"] != provider_id:
+            return {"message": "Menu item not found or not yours", "error": "not_found"}
+
         data = {
             "plan_id":      plan_id,
             "menu_item_id": menu_item_id,
