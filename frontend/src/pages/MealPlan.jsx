@@ -31,6 +31,7 @@ export default function MealPlan() {
   const [subscription, setSubscription]  = useState(null); // active/paused subscription, or null
   const [subscribing,  setSubscribing]   = useState(false);
   const [controlBusy,  setControlBusy]   = useState(false);
+  const [showFullWeek, setShowFullWeek]  = useState(false);
   const [error,        setError]         = useState("");
   const [swapping,     setSwapping]      = useState(null); // decorative only — no backend action yet
 
@@ -297,6 +298,7 @@ export default function MealPlan() {
         <div style={s.secLbl}>This Week's Menu</div>
 
         {/* Day selector */}
+        {!showFullWeek && (
         <div style={{ display: "flex", gap: 6, padding: "0 16px", overflowX: "auto", marginBottom: 12 }}>
           {[1, 2, 3, 4, 5, 6, 7].map(dayNum => {
             const active = selectedDay === dayNum;
@@ -320,7 +322,10 @@ export default function MealPlan() {
             );
           })}
         </div>
+        )}
 
+        {!showFullWeek && (
+        <>
         {/* Day totals */}
         <div style={{ ...s.card, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
           {[
@@ -419,6 +424,55 @@ export default function MealPlan() {
             );
           })}
         </div>
+        </>
+        )}
+
+        {/* Full week view */}
+        {showFullWeek && (
+          <div style={{ padding: "0 16px", marginBottom: 8 }}>
+            {[1, 2, 3, 4, 5, 6, 7].map(dayNum => {
+              const dayMeals = planMeals.filter(m => m.day_number === dayNum);
+              const isToday = subscription?.current_day_number === dayNum;
+              return (
+                <div key={dayNum} style={{ ...s.card, margin: "0 0 8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: dayMeals.length ? 10 : 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                      {dayNumberToLabel(dayNum)}
+                    </div>
+                    {isToday && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: C.blue,
+                        background: "rgba(0,122,255,0.1)", borderRadius: 4,
+                        padding: "1px 6px",
+                      }}>
+                        TODAY
+                      </span>
+                    )}
+                  </div>
+                  {dayMeals.length === 0 && (
+                    <div style={{ fontSize: 12, color: C.textSub }}>Nothing scheduled.</div>
+                  )}
+                  {dayMeals.map((meal, i) => {
+                    const item = meal.menu_item || {};
+                    const slotLabel = (meal.meal_slot || "").replace("_", " ");
+                    return (
+                      <div key={meal.id || i} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "6px 0",
+                        borderTop: i > 0 ? `0.5px solid ${C.sep}` : "none",
+                      }}>
+                        <div style={{ fontSize: 12, color: C.text, textTransform: "capitalize" }}>
+                          {slotLabel} — {item.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.textSub }}>{item.calories || 0} kcal</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── PLAN CONTROLS ── */}
         <div style={s.secLbl}>Plan Controls</div>
@@ -437,7 +491,12 @@ export default function MealPlan() {
               icon: "ti-x", label: "Skip a day", sub: "Move to next day", color: C.red,
               onClick: handleSkipDay, disabled: !subscription,
             },
-            { icon: "ti-calendar", label: "View full week", sub: "Use the day tabs above", color: C.green, disabled: true },
+            {
+              icon: "ti-calendar", label: showFullWeek ? "Hide full week" : "View full week",
+              sub: showFullWeek ? "Back to single day" : "See all 7 days", color: C.green,
+              onClick: () => setShowFullWeek(v => !v),
+              disabled: !plan,
+            },
           ].map(a => (
             <div
               key={a.label}
