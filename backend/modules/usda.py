@@ -21,10 +21,36 @@ load_dotenv()
 USDA_API_KEY  = os.getenv("USDA_API_KEY", "")
 USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1"
 
-# ── Cache — avoid calling API twice for same food ─────────────────────────────
-# When user searches "chicken" → we save result in memory
-# Next time user searches "chicken" → return from cache instantly
+# ── Cache — two tiers ─────────────────────────────────────────────────────────
+# Tier 1: in-memory dict — instant, but wiped on every backend restart/redeploy.
+# Tier 2: Supabase table — survives restarts, shared across requests.
+# Same lookup pattern as before, just backed by something durable underneath.
 _cache = {}
+
+
+def _cache_get(cache_key: str):
+    if cache_key in _cache:
+        return _cache[cache_key]
+    try:
+        from modules.supabase_client import supabase
+        row = supabase.table("nutrition_cache").select("results").eq("cache_key", cache_key).execute().data
+        if row:
+            _cache[cache_key] = row[0]["results"]  # warm the in-memory tier too
+            return row[0]["results"]
+    except Exception as e:
+        print(f"⚠️  Nutrition cache read error (falling back to API): {e}")
+    return None
+
+
+def _cache_set(cache_key: str, source: str, results: list):
+    _cache[cache_key] = results
+    try:
+        from modules.supabase_client import supabase
+        supabase.table("nutrition_cache").upsert({
+            "cache_key": cache_key, "source": source, "results": results,
+        }).execute()
+    except Exception as e:
+        print(f"⚠️  Nutrition cache write error (non-fatal, in-memory cache still works): {e}")
 
 
 def search_usda(food_name: str, max_results: int = 5) -> list:
@@ -39,11 +65,12 @@ def search_usda(food_name: str, max_results: int = 5) -> list:
         print("⚠️  USDA_API_KEY not set in .env")
         return []
 
-    # Check cache first
+    # Check cache first (memory, then Supabase)
     cache_key = food_name.lower().strip()
-    if cache_key in _cache:
+    cached = _cache_get(cache_key)
+    if cached is not None:
         print(f"📦 USDA cache hit: {food_name}")
-        return _cache[cache_key]
+        return cached
 
     try:
         # Search USDA API
@@ -78,8 +105,8 @@ def search_usda(food_name: str, max_results: int = 5) -> list:
                     "source":      "USDA",
                 })
 
-        # Save to cache
-        _cache[cache_key] = result
+        # Save to cache (memory + Supabase)
+        _cache_set(cache_key, "USDA", result)
         print(f"✅ USDA found {len(result)} results for '{food_name}'")
         return result
 
