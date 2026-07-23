@@ -20,7 +20,7 @@ from modules.text_parser        import extract_food_items
 from modules.health_score       import compute_meal_health_score
 from modules.personalization    import apply_personalization
 from modules.barcode            import fetch_product
-from modules.places             import search_nearby_restaurants, search_restaurants_by_city
+from modules.places             import search_nearby_restaurants, search_restaurants_by_city, geocode_city
 from modules.menu               import get_menu_for_restaurant
 from modules.cart               import create_cart, add_to_cart, get_cart_meal_dict
 from modules.order              import process_order
@@ -48,6 +48,7 @@ from modules.db   import (
     advance_subscription_day_db, update_subscription_status_db,
     update_plan_db, delete_plan_db, plan_belongs_to_provider_db,
     get_my_week_meals_db, get_swap_options_db, swap_meal_db,
+    set_provider_location_db, get_nearby_providers_db,
 )
 
 # ── Load nutrition DB on startup ───────────────────────────────────────────────
@@ -399,7 +400,7 @@ def search_foods(q: str):
     # ── LAYER 2: USDA — only if local = 0 AND Western food ───────────────────
     USDA_OK_KEYWORDS = [
         "pasta", "bread", "cheese", "milk", "yogurt", "cream",
-        "beef", "pork", "turkey", "salmon", "tuna", "cod", "shrimp",
+        "chicken", "beef", "pork", "turkey", "salmon", "tuna", "cod", "shrimp",
         "apple", "orange", "banana", "grape", "strawberry", "blueberry",
         "oat", "cereal", "cornflake", "waffle", "pancake", "bagel",
         "pizza", "burger", "hotdog", "sandwich", "fries",
@@ -712,6 +713,38 @@ def delete_my_menu_item(item_id: str, user_id: Optional[str] = Depends(get_user_
         raise HTTPException(status_code=500, detail="Could not load provider account.")
 
     return delete_menu_item_db(item_id, provider["id"])
+
+
+class ProviderLocationInput(BaseModel):
+    address: str
+
+@app.put("/provider/location")
+def set_provider_location(body: ProviderLocationInput, user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+
+    lat, lng = geocode_city(body.address)
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="Couldn't find that address. Try being more specific (include city).")
+
+    result = set_provider_location_db(provider["id"], body.address, lat, lng)
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+
+@app.get("/providers/nearby")
+def providers_nearby(lat: float, lng: float, radius_km: float = 10):
+    """
+    Public — real, verified FoodMood providers near a location, each with
+    their actual menu items. This is what bridges restaurant search with
+    the provider marketplace, instead of TomTom results only ever showing
+    a generic placeholder menu.
+    """
+    return get_nearby_providers_db(lat, lng, radius_km)
 
 
 @app.get("/menu/browse")
