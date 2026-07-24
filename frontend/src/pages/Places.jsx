@@ -120,10 +120,12 @@ export default function Places() {
   const [placing,     setPlacing]   = useState(false);
   const [formErr,     setFormErr]   = useState("");
   const [lastOrder,   setLastOrder] = useState(null);
+  const [verifiedProviders, setVerifiedProviders] = useState([]);
+  const [loadingProviders,  setLoadingProviders]  = useState(false);
 
   function refreshCart() { setCart({ ...structuredClone(_cart), items: [..._cart.items] }); }
 
-  // ── Search — unchanged ──
+  // ── Search — unchanged, plus real FoodMood providers alongside it ──
   async function search() {
     if (!city.trim()) return;
     setSearching(true);
@@ -132,6 +134,15 @@ export default function Places() {
       setRests(r.data.restaurants || r.data || []);
     } catch { setRests(DEMO_RESTS); }
     setSearching(false);
+
+    setLoadingProviders(true);
+    try {
+      const p = await api.get(`/providers/nearby-by-city?city=${encodeURIComponent(city)}`);
+      setVerifiedProviders(p.data || []);
+    } catch {
+      setVerifiedProviders([]); // no real providers near this city yet — not an error, just empty
+    }
+    setLoadingProviders(false);
   }
 
   // ── Open restaurant — unchanged ──
@@ -143,6 +154,24 @@ export default function Places() {
       setMenu(res.data.items || res.data || []);
     } catch { setMenu(DEMO_MENU); }
     setMenuLoad(false);
+  }
+
+  // ── Open a REAL verified FoodMood provider — uses its actual menu_items
+  // directly (already fetched), not the generic SAMPLE_MENUS placeholder. ──
+  function openVerifiedProvider(provider) {
+    setActiveRest({
+      id: provider.id, name: provider.name,
+      address: provider.address, cuisine: provider.cuisine,
+      distance_km: provider.distance_km, isVerifiedProvider: true,
+    });
+    clearCart(); _cart.restaurant_name = provider.name; refreshCart();
+    setMenu((provider.menu_items || []).map(item => ({
+      id: item.id, name: item.name, desc: item.description || "",
+      price: item.price, calories: item.calories, protein: item.protein,
+      carbs: item.carbs, fat: item.fat, veg: item.veg,
+      status: item.status, tags: item.tags || [],
+    })));
+    setView("menu");
   }
 
   // ── Place order — unchanged ──
@@ -284,6 +313,66 @@ export default function Places() {
               </button>
             </div>
 
+            {loadingProviders && (
+              <div style={{ fontSize: 12, color: C.textSub, marginBottom: 12 }}>
+                Checking for verified FoodMood partners…
+              </div>
+            )}
+
+            {verifiedProviders.length > 0 && (
+              <>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6, marginBottom: 12,
+                }}>
+                  <i className="ti ti-shield-check" style={{ fontSize: 14, color: C.green }} aria-hidden="true" />
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.green, letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                    {verifiedProviders.length} Verified FoodMood Partner{verifiedProviders.length > 1 ? "s" : ""} nearby
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+                  {verifiedProviders.map((p, i) => {
+                    const verifiedCount = (p.menu_items || []).filter(
+                      m => m.status === "verified" || m.status === "premium"
+                    ).length;
+                    return (
+                      <div
+                        key={p.id}
+                        className="rest-row tappable"
+                        onClick={() => openVerifiedProvider(p)}
+                        style={{
+                          background: C.surface,
+                          border: `1px solid ${C.green}44`,
+                          borderRadius: 16, padding: "14px 16px",
+                          cursor: "pointer", display: "flex", alignItems: "center", gap: 14,
+                          animation: `fadeUp 0.3s ${i * 0.04}s both`,
+                        }}
+                      >
+                        <div style={{
+                          width: 44, height: 44, borderRadius: 12,
+                          background: "rgba(48,209,88,0.1)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0,
+                        }}>
+                          <i className="ti ti-shield-check" style={{ fontSize: 20, color: C.green }} aria-hidden="true" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 3 }}>
+                            {p.name}
+                          </div>
+                          <div style={{ fontSize: 12, color: C.textSub }}>{p.address}</div>
+                          <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
+                            {p.distance_km} km · {(p.menu_items || []).length} dishes
+                            {verifiedCount > 0 && ` · ${verifiedCount} verified`}
+                          </div>
+                        </div>
+                        <i className="ti ti-chevron-right" style={{ fontSize: 16, color: C.textSub }} aria-hidden="true" />
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
             {rests.length > 0 && (
               <>
                 <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 12 }}>
@@ -423,8 +512,19 @@ export default function Places() {
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>
-                        {item.name}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                          {item.name}
+                        </div>
+                        {(item.status === "verified" || item.status === "premium") && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, color: C.green,
+                            background: "rgba(48,209,88,0.1)", borderRadius: 4,
+                            padding: "1px 6px", flexShrink: 0,
+                          }}>
+                            ✓ Verified
+                          </span>
+                        )}
                       </div>
                       <div style={{
                         fontSize: 12, color: C.textSub, marginBottom: 6,

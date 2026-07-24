@@ -718,6 +718,20 @@ def delete_my_menu_item(item_id: str, user_id: Optional[str] = Depends(get_user_
 class ProviderLocationInput(BaseModel):
     address: str
 
+@app.get("/provider/location")
+def get_provider_location(user_id: Optional[str] = Depends(get_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required.")
+    provider = get_or_create_provider_db(user_id)
+    if not provider:
+        raise HTTPException(status_code=500, detail="Could not load provider account.")
+    return {
+        "address": provider.get("address"),
+        "location_lat": provider.get("location_lat"),
+        "location_lng": provider.get("location_lng"),
+    }
+
+
 @app.put("/provider/location")
 def set_provider_location(body: ProviderLocationInput, user_id: Optional[str] = Depends(get_user_id)):
     if not user_id:
@@ -744,6 +758,15 @@ def providers_nearby(lat: float, lng: float, radius_km: float = 10):
     the provider marketplace, instead of TomTom results only ever showing
     a generic placeholder menu.
     """
+    return get_nearby_providers_db(lat, lng, radius_km)
+
+
+@app.get("/providers/nearby-by-city")
+def providers_nearby_by_city(city: str, radius_km: float = 15):
+    """Same as /providers/nearby, but takes a city name — matches how /restaurants?city= already works."""
+    lat, lng = geocode_city(city)
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail=f"Couldn't find city: {city}")
     return get_nearby_providers_db(lat, lng, radius_km)
 
 

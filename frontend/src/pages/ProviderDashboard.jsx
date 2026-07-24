@@ -65,6 +65,11 @@ export default function ProviderDashboard() {
   const [saved,     setSaved]    = useState(false);
   const [error,     setError]    = useState("");
   const [expanded,  setExpanded] = useState(null);
+  const [providerAddress, setProviderAddress] = useState("");
+  const [addressInput,    setAddressInput]    = useState("");
+  const [savingAddress,   setSavingAddress]   = useState(false);
+  const [addressSaved,    setAddressSaved]    = useState(false);
+  const [locationLoaded,  setLocationLoaded]  = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,8 +85,29 @@ export default function ProviderDashboard() {
     api.get("/admin/check").then(res => {
       if (!cancelled) setIsAdmin(!!res.data?.is_admin);
     }).catch(() => {});
+    api.get("/provider/location").then(res => {
+      if (!cancelled) {
+        setProviderAddress(res.data?.address || "");
+        setAddressInput(res.data?.address || "");
+        setLocationLoaded(true);
+      }
+    }).catch(() => { if (!cancelled) setLocationLoaded(true); });
     return () => { cancelled = true; };
   }, []);
+
+  async function saveAddress() {
+    if (!addressInput.trim()) return;
+    setSavingAddress(true); setError("");
+    try {
+      await api.put("/provider/location", { address: addressInput.trim() });
+      setProviderAddress(addressInput.trim());
+      setAddressSaved(true);
+      setTimeout(() => setAddressSaved(false), 2000);
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Couldn't save location — try including your city.");
+    }
+    setSavingAddress(false);
+  }
 
   async function handleSetStatus(itemId, status) {
     setUpdatingStatusId(itemId);
@@ -386,6 +412,48 @@ export default function ProviderDashboard() {
             ))}
           </div>
         </div>
+
+        {/* ── LOCATION ── */}
+        {locationLoaded && (
+          <div style={{ ...s.card, marginTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <i className="ti ti-map-pin" style={{ fontSize: 16, color: providerAddress ? C.green : C.amber }} aria-hidden="true" />
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+                {providerAddress ? "Your location" : "Set your location"}
+              </div>
+            </div>
+            {!providerAddress && (
+              <div style={{ fontSize: 11, color: C.textSub, marginBottom: 10 }}>
+                Without this, your menu won't show up when nearby users search for restaurants.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={addressInput}
+                onChange={e => setAddressInput(e.target.value)}
+                placeholder="e.g. FC Road, Pune"
+                style={{
+                  flex: 1, padding: "10px 12px", borderRadius: 10,
+                  border: `0.5px solid ${C.sep}`, fontSize: 13,
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              />
+              <button
+                onClick={saveAddress}
+                disabled={savingAddress || !addressInput.trim()}
+                style={{
+                  padding: "10px 16px", borderRadius: 10, border: "none",
+                  background: addressSaved ? C.green : C.accent, color: "#fff",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  fontFamily: "'Inter', sans-serif",
+                  opacity: savingAddress ? 0.6 : 1, flexShrink: 0,
+                }}
+              >
+                {addressSaved ? "Saved!" : savingAddress ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── STATS ROW ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 4, margin: "12px 16px" }}>
