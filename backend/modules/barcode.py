@@ -24,7 +24,10 @@ def fetch_product(barcode: str) -> dict:
 
     for url in urls:
         try:
-            response = requests.get(url, timeout=8)
+            response = requests.get(
+                url, timeout=8,
+                headers={"User-Agent": "FoodMood/1.0 (contact: support@foodmood.app)"},
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -52,8 +55,11 @@ def fetch_product(barcode: str) -> dict:
                 }
 
         except requests.exceptions.Timeout:
+            print(f"⚠️  OpenFoodFacts timeout: {url}")
             continue  # try next URL
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️  OpenFoodFacts request failed ({url}): {e}")
             continue  # try next URL
 
+    print(f"❌ Barcode {barcode} not found on India or world OpenFoodFacts endpoints")
     return {"error": f"Product {barcode} not found in Indian or world database"}
