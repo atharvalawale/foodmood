@@ -139,7 +139,7 @@ function ResultCard({ result, mealType, onClear }) {
       {/* Nutri-Score + allergens — only present for barcode/packaged-food results */}
       {(result.nutriscore || (result.allergens && result.allergens.length > 0)) && (
         <div style={{ padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {result.nutriscore && result.nutriscore !== "?" && (
+          {result.nutriscore && !["?", "UNKNOWN", "NOT-APPLICABLE"].includes(result.nutriscore.toUpperCase()) && (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: 10, flexShrink: 0,
