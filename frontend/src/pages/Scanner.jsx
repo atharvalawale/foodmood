@@ -136,6 +136,37 @@ function ResultCard({ result, mealType, onClear }) {
         ))}
       </div>
 
+      {/* Nutri-Score + allergens — only present for barcode/packaged-food results */}
+      {(result.nutriscore || (result.allergens && result.allergens.length > 0)) && (
+        <div style={{ padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {result.nutriscore && result.nutriscore !== "?" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 18, fontWeight: 800, color: "#fff",
+                background: { A: "#1E8E3E", B: "#7CB342", C: C.amber, D: "#F4511E", E: C.red }[result.nutriscore] || C.textSub,
+              }}>
+                {result.nutriscore}
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>Nutri-Score {result.nutriscore}</div>
+                <div style={{ fontSize: 11, color: C.textSub }}>Independent nutrition grade from Open Food Facts</div>
+              </div>
+            </div>
+          )}
+          {result.allergens && result.allergens.length > 0 && (
+            <div style={{
+              background: "#FFF0F0", border: `0.5px solid ${C.red}33`,
+              borderRadius: 10, padding: "8px 12px",
+              fontSize: 12, color: C.red,
+            }}>
+              ⚠️ Contains: {result.allergens.map(a => a.replace("en:", "").replace(/-/g, " ")).join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Controls */}
       <div style={{ padding: "14px 16px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.5fr", gap: 8, marginBottom: 12 }}>

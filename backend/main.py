@@ -1142,50 +1142,26 @@ async def analyze_video(
 @app.get("/barcode/{barcode}")
 def barcode_lookup(barcode: str):
     """
-    Barcode lookup — tries Open Food Facts first (best for Indian products),
-    then falls back to existing barcode module.
-    Open Food Facts has 3M+ products including all major Indian brands.
+    Barcode lookup via OpenFoodFacts (India endpoint first, then world) —
+    see modules/barcode.py for the India/world fallback logic.
     """
-    # ── Try Open Food Facts first ─────────────────────────────────────────────
-    try:
-        from modules.openfoodfacts import get_by_barcode
-        off_product = get_by_barcode(barcode)
-        if off_product:
-            food_key = off_product["key"]
-            # Cache in NUTRITION_DB for future searches
-            if food_key not in NUTRITION_DB:
-                NUTRITION_DB[food_key] = {
-                    "calories_100g": off_product["calories_100g"],
-                    "protein":       off_product.get("protein", 0),
-                    "carbs":         off_product.get("carbs",   0),
-                    "fat":           off_product.get("fat",     0),
-                    "fiber":         off_product.get("fiber",   0),
-                    "sugar":         off_product.get("sugar",   0),
-                    "sodium":        off_product.get("sodium",  0),
-                    "source":        "openfoodfacts",
-                }
-            return {
-                "food_name":           off_product["name"],
-                "food_key":            food_key,
-                "total_calories":      off_product["calories_100g"],
-                "total_protein":       off_product.get("protein", 0),
-                "total_carbs":         off_product.get("carbs",   0),
-                "total_fat":           off_product.get("fat",     0),
-                "total_sugar":         off_product.get("sugar",   0),
-                "total_sodium":        off_product.get("sodium",  0),
-                "total_fiber":         off_product.get("fiber",   0),
-                "image_url":           off_product.get("image_url", ""),
-                "nutriscore":          off_product.get("nutriscore", ""),
-                "verification_status": "verified",
-                "source":              "Open Food Facts",
-            }
-    except Exception as e:
-        print(f"⚠️  OpenFoodFacts barcode failed: {e}")
-
-    # ── Fallback to existing barcode module ───────────────────────────────────
     product = fetch_product(barcode)
     if "error" in product:
         raise HTTPException(status_code=404, detail=f"Product {barcode} not found. Try scanning an Indian packaged product.")
+
+    food_key = product.get("name", "unknown").lower().replace(" ", "_")
+    if food_key not in NUTRITION_DB:
+        NUTRITION_DB[food_key] = {
+            "calories_100g": product.get("calories_per_100g", 0),
+            "protein":       product.get("protein_g", 0),
+            "carbs":         product.get("carbs_g",   0),
+            "fat":           product.get("fat_g",     0),
+            "fiber":         product.get("fiber_g",   0),
+            "sugar":         product.get("sugar_g",   0),
+            "sodium":        product.get("sodium_mg", 0),
+            "source":        product.get("source", "openfoodfacts"),
+        }
+
     return {
         "food_name":           product.get("name",              "Unknown product"),
         "total_calories":      product.get("calories_per_100g",  0),
@@ -1194,9 +1170,12 @@ def barcode_lookup(barcode: str):
         "total_fat":           product.get("fat_g",              0),
         "total_sugar":         product.get("sugar_g",            0),
         "total_sodium":        product.get("sodium_mg",          0),
+        "total_fiber":         product.get("fiber_g",            0),
         "ingredients":         product.get("ingredients",        ""),
         "allergens":           product.get("allergens",          []),
+        "nutriscore":          product.get("nutriscore",          ""),  # was silently dropped before
         "verification_status": "verified",
+        "source":              product.get("source", "openfoodfacts"),
     }
 
 

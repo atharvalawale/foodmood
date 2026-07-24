@@ -895,3 +895,62 @@ def swap_meal_db(user_id: str, day_number: int, meal_slot: str, menu_item_id: st
     except Exception as e:
         print(f"❌ Swap meal error: {e}")
         return {"message": "Swap failed", "error": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROVIDER LOCATION & NEARBY DISCOVERY
+# Bridges the TomTom restaurant-search flow with the real provider
+# marketplace — previously providers had no location at all, so real
+# menu_items could never surface through normal "restaurants near me" search.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    from math import radians, sin, cos, sqrt, atan2
+    R = 6371  # Earth radius in km
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
+
+
+def set_provider_location_db(provider_id: str, address: str, lat: float, lng: float):
+    try:
+        result = supabase.table("providers") \
+            .update({"address": address, "location_lat": lat, "location_lng": lng}) \
+            .eq("id", provider_id) \
+            .execute()
+        if not result.data:
+            return {"message": "Provider not found", "error": "not_found"}
+        return {"message": "Location saved!", "data": result.data[0]}
+    except Exception as e:
+        print(f"❌ Provider location update error: {e}")
+        return {"message": "Location save failed", "error": str(e)}
+
+
+def get_nearby_providers_db(lat: float, lng: float, radius_km: float = 10):
+    """
+    Real FoodMood providers within radius_km, each with their menu items
+    (verified ones first). Distance computed in Python since this is a
+    small provider count — see schema.sql notes on when to revisit.
+    """
+    try:
+        providers = supabase.table("providers") \
+            .select("*") \
+            .not_.is_("location_lat", "null") \
+            .not_.is_("location_lng", "null") \
+            .execute().data or []
+
+        nearby = []
+        for p in providers:
+            dist = _haversine_km(lat, lng, p["location_lat"], p["location_lng"])
+            if dist <= radius_km:
+                items = supabase.table("menu_items") \
+                    .select("*").eq("provider_id", p["id"]).execute().data or []
+                items.sort(key=lambda i: {"premium": 0, "verified": 1, "calculated": 2, "unverified": 3}.get(i.get("status"), 4))
+                nearby.append({**p, "distance_km": round(dist, 2), "menu_items": items})
+
+        nearby.sort(key=lambda p: p["distance_km"])
+        return nearby
+    except Exception as e:
+        print(f"❌ Nearby providers error: {e}")
+        return []
